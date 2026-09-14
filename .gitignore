@@ -14,7 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# ⚠️ 原範本有一行 `lib/`（virtualenv 用），已移除：本專案的 lib/ 是產品程式。
+# 留著會讓 `git add -A` 靜默跳過整個 lib/，commit 也不報錯。
 lib64/
 parts/
 sdist/
