@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# 個資 denylist（本機檔，刻意不入庫）
+tests/pii_denylist.local.txt
+
+# 暫存
+.tmp/
+
+# 產出
+*.xlsx
+*.pdf
