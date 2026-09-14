@@ -46,11 +46,17 @@ openpyxl → .xlsx      QPdfWriter → .pdf
 member(id, name, active)
 ```
 
-### 規則版本區（建立即凍結，永不修改）
+### 規則版本區（啟用即凍結）
 
 ```sql
-ruleset(id, name)                        -- '龍興所輪番規則'
-ruleset_version(id, ruleset_id, version_no, created_at, note)
+ruleset(id, name)                  -- '龍興所輪番規則'
+ruleset_version(
+  id, ruleset_id,
+  draft_name,    -- 草稿階段的識別名，例 '改 22 格、休調到週末'
+  version_no,    -- 'v1' 'v2'；★ 草稿為 NULL，啟用時才配號
+  status,        -- '草稿' / '啟用'，單向不可逆
+  created_at, activated_at, note
+)
 
 rv_group(
   id, version_id, name,
@@ -73,6 +79,49 @@ rv_slot(
 ⚠️ **畫面上被覆寫過的格子要有視覺記號**（例如底色不同），讓人一眼看出
 「這格是手動指定的，不是預設算出來的」。不然半年後看到怪代號會以為程式壞了。
 
+### 設定怎麼存：草稿與啟用
+
+規則要慢慢編（填槽位、勾休、設代碼取法），但啟用後必須凍結。兩者用**同一張表
+的 `status` 欄**分開，不另開草稿表。
+
+```
+草稿（可改、可刪、無版號）  ──「啟用」──►  啟用（配版號、鎖死）
+```
+
+- **草稿最多 3 份。** 這不是彈性過剩：調整輪番的最後決定權在所長，承辦人要先
+  備幾個方案給他挑。草稿靠 `draft_name` 識別，讓所長分得出誰是誰。
+- **草稿不配版號。** 若建立就配號，所長只挑一個、其餘刪掉，版號會跳號
+  （`v1` 之後直接 `v4`），半年後看到會以為漏了版本。**啟用那一刻才配。**
+- **啟用是單向的**，不能改回草稿——否則鎖形同虛設。
+- **啟用版本永遠保留，沒有「停用」狀態。** 版本不會失效，它只是舊，而且舊月份
+  的 `month_plan` 還指著它。
+
+#### 最新版用算的，不存欄位
+
+```
+最新 = status='啟用' 之中 version_no 最大者
+```
+
+⚠️ **不要存 `is_latest` 欄位。** 每次發新版都要記得關掉舊的 flag，漏關一次就會
+有兩個「最新」，而且不會報錯，只會讓推薦欄顯示錯的版本，極難發現。算出來的
+東西沒有第二份真相可以跟它不一致。
+
+#### 設定畫面呈現
+
+```
+草稿  「維持現行 20 格」          2026-09-14
+草稿  「改 22 格、休調到週末」      2026-09-14
+
+v2  啟用  2026-03-01   ★ 最新     ← 產月表時預設帶這一版
+v1  啟用  2025-11-01
+```
+
+產月表預設帶 ★ 那一版；下拉可選舊版（補產去年的表用得到），但要承辦人自己點，
+不會誤用。
+
+#### 鎖是資料庫層保證的，不靠程式自律
+
+
 ### 事實區（產出後只新增、不修改）
 
 ```sql
@@ -91,17 +140,18 @@ month_seed(plan_id, group_id, member_id, row_no, slot_seq)
 回頭重印任何一個月，都是拿該月的 `ruleset_version_id` 去讀規則，結果必然與
 當初一致——規則改過幾次都不影響。
 
-### 不可修改怎麼保證
-
-不靠程式自律，用 SQLite trigger 擋死：
+Trigger 不是整張表禁 UPDATE，而是**只擋非草稿狀態**：
 
 ```sql
-CREATE TRIGGER rv_slot_immutable
+CREATE TRIGGER rv_slot_locked
 BEFORE UPDATE ON rv_slot
-BEGIN SELECT RAISE(ABORT, '規則版本不可修改'); END;
+WHEN (SELECT status FROM ruleset_version
+      WHERE id = OLD.version_id) <> '草稿'
+BEGIN SELECT RAISE(ABORT, '已啟用的規則不可修改'); END;
 ```
 
-`ruleset_version` / `rv_group` / `rv_slot` 三張表全部禁 UPDATE、禁 DELETE。
+`ruleset_version` / `rv_group` / `rv_slot` 三張表的 UPDATE 與 DELETE 都要有
+對應的 trigger；`ruleset_version` 另需一條擋住 `status` 由「啟用」改回「草稿」。
 
 ### 容量
 
@@ -128,7 +178,7 @@ BEGIN SELECT RAISE(ABORT, '規則版本不可修改'); END;
 
 以下尚未與維護者定案，**動工前要先問**：
 
-1. 設定怎麼存進資料庫、初始資料怎麼導入（維護者表示「再想想」）
+1. 初始資料怎麼導入（既有排班如何第一次進系統）
 2. A3 橫式版面的實際尺寸、欄寬、字級、頁首格式
 3. 番號對應班別的註記（早班／中班／晚班）是固定備註還是程式算出來
 4. 同一個人可不可以同時在兩個番組
