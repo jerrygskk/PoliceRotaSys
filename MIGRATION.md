@@ -18,6 +18,7 @@
 | `lib/db_utils.py`、`lib/db_backup.py` | SQLite 連線慣例、備份 |
 | `lib/window_geometry.py`、`lib/app_lock.py` | 視窗位置記憶、單一實例 |
 | `lib/version.py` ＋ `tools/bump_version.py` | 進版機制 |
+| `ui_utils/settings_panels.py` | `_SettingsPanel`／`_save_row` 設定面板公版；`PrintTitlePanel` 可直接改用 |
 
 ## 二、搬測試基礎建設（比 code 更重要）
 
@@ -46,6 +47,8 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 - **QTW-13／QTW-14** 日期框被滾輪／點擊靜默改掉
 - **LAY-4b／4c／7／8／15** 欄寬與離線量測失準
 - **QTW-5／QTW-6 ＋ LAY-8** 的共同教訓：125% 縮放下的視覺問題容器量不出來，只能上機定案
+- **CFG-1** 開機讀一次就快取的設定，存檔後要有人重新套用（見 DEVELOPER §7）
+- **QTW-7／8／9／11／12** 可打字 combo ＋ completer 那一整族（本專案明令不用，見 DEVELOPER §4）
 
 ### 要改寫的兩條
 
