@@ -220,8 +220,10 @@ def build_sheet_for(
 ) -> Sheet:
     """把某個月的計畫組成版面模型。
 
-    ⚠️ 只有 ``rotate`` 番組由程式填滿；``fixed`` 番組（固定番、幹部）整列
+    ⚠️ 只有 ``rotate`` 番組由程式填滿；``fixed`` 番組（固定番、幹部）整欄
     留白供手填，僅印姓名與其代碼（DEVELOPER §8）。
+
+    ⚠️ X 軸是人名、Y 軸是日期——一位同仁一欄。
     """
     plan = get_plan(conn, year, month)
     if plan is None:

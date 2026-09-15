@@ -2,29 +2,44 @@
 
 與 ``xlsx_writer`` 吃同一份 :class:`lib.layout_model.Sheet`，兩邊才會長一樣。
 
+⚠️ **X 軸是人名（欄），Y 軸是日期（列）**。第一版做反了，見 layout_model 的說明。
+
 ⚠️ **用 QPdfWriter 而不是 reportlab**：PySide6 已經在包裡，PDF 等於免費附贈；
 多拉一個套件進來只是多一段開機解壓時間（CLAUDE.md §B 的封閉相依清單）。
 
-⚠️ 匯出 PDF **不需要 QApplication**，但需要 QGuiApplication 才能量字。
+⚠️ 匯出 PDF 不需要完整的 QApplication，但**需要 QGuiApplication** 才能量字。
 本模組自己確保有一個（離線環境請設 ``QT_QPA_PLATFORM=offscreen``）。
 """
 from __future__ import annotations
 
 from PySide6.QtCore import QMarginsF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QPageLayout, QPageSize, QPainter, QPdfWriter
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QGuiApplication,
+    QPageLayout,
+    QPageSize,
+    QPainter,
+    QPdfWriter,
+)
 
-from lib.layout_model import RED, Sheet
+from lib.layout_model import COL_MEMBER, RED, Sheet
 
 RESOLUTION = 300          # dpi
 MARGIN_MM = 8.0
 FONT_FAMILY = "標楷體"
 
 TITLE_POINT = 14
-BODY_POINT = 8
+BODY_POINT = 7
 
-# 版面比例：姓名欄與代碼欄佔固定寬度，其餘平分給日期格。
-LABEL_RATIO = 0.085
-CODE_RATIO = 0.030
+# 欄寬權重：日期／星期欄比姓名欄寬一點。
+HEADER_COL_WEIGHT = 1.25
+MEMBER_COL_WEIGHT = 1.0
+
+# 標題列與姓名列佔整頁高度的比例。
+TITLE_RATIO = 0.055
+NAME_RATIO = 0.085
+CODE_RATIO = 0.028
 
 
 def _ensure_app() -> None:
@@ -34,10 +49,6 @@ def _ensure_app() -> None:
 
 def _qcolor(color: str) -> QColor:
     return QColor("#cc0000") if color == RED else QColor("#000000")
-
-
-def _page_rect(writer: QPdfWriter) -> QRectF:
-    return QRectF(0, 0, writer.width(), writer.height())
 
 
 def write_sheet(sheet: Sheet, path: str) -> None:
@@ -56,52 +67,99 @@ def write_sheet(sheet: Sheet, path: str) -> None:
 
     painter = QPainter(writer)
     try:
-        _paint(painter, writer, sheet)
+        _paint(painter, QRectF(0, 0, writer.width(), writer.height()), sheet)
     finally:
         painter.end()
 
 
-def _paint(painter: QPainter, writer: QPdfWriter, sheet: Sheet) -> None:
-    page = _page_rect(writer)
-    rows = sheet.rows
-    if not rows:
+def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
+    columns = sheet.columns
+    if not columns:
         return
+
+    title_h = page.height() * TITLE_RATIO
+    name_h = page.height() * NAME_RATIO
+    code_h = page.height() * CODE_RATIO
+    body_h = page.height() - title_h - name_h - code_h
+    row_h = body_h / sheet.day_count
+
+    weights = [
+        HEADER_COL_WEIGHT if column.kind != COL_MEMBER else MEMBER_COL_WEIGHT
+        for column in columns
+    ]
+    unit_w = page.width() / sum(weights)
 
     title_font = QFont(FONT_FAMILY, TITLE_POINT)
     title_font.setBold(True)
     painter.setFont(title_font)
-    title_h = painter.fontMetrics().height() * 1.8
-    painter.setPen(_qcolor("black"))
+    painter.setPen(QColor("#000000"))
     painter.drawText(
         QRectF(page.left(), page.top(), page.width(), title_h),
         Qt.AlignCenter,
         sheet.title,
     )
 
-    grid_top = page.top() + title_h
-    row_h = (page.height() - title_h) / len(rows)
-    label_w = page.width() * LABEL_RATIO
-    code_w = page.width() * CODE_RATIO
-    day_w = (page.width() - label_w - code_w) / sheet.day_count
+    body_font = QFont(FONT_FAMILY, BODY_POINT)
+    painter.setFont(body_font)
 
-    painter.setFont(QFont(FONT_FAMILY, BODY_POINT))
-    for index, row in enumerate(rows):
-        top = grid_top + index * row_h
-        _paint_cell(painter, QRectF(page.left(), top, label_w, row_h),
-                    row.label, row.label_color)
-        _paint_cell(painter, QRectF(page.left() + label_w, top, code_w, row_h),
-                    row.code, "black")
-        for day, cell in enumerate(row.cells):
-            rect = QRectF(
-                page.left() + label_w + code_w + day * day_w, top, day_w, row_h
+    x = page.left()
+    for column, weight in zip(columns, weights):
+        width = unit_w * weight
+        _paint_cell(
+            painter,
+            QRectF(x, page.top() + title_h, width, name_h),
+            column.header,
+            column.header_color,
+            vertical=column.kind == COL_MEMBER,
+        )
+        _paint_cell(
+            painter,
+            QRectF(x, page.top() + title_h + name_h, width, code_h),
+            column.code,
+            "black",
+        )
+        top = page.top() + title_h + name_h + code_h
+        for day, cell in enumerate(column.cells):
+            _paint_cell(
+                painter,
+                QRectF(x, top + day * row_h, width, row_h),
+                cell.text,
+                cell.color,
             )
-            _paint_cell(painter, rect, cell.text, cell.color)
+        x += width
 
 
-def _paint_cell(painter: QPainter, rect: QRectF, text: str, color: str) -> None:
+def _paint_cell(
+    painter: QPainter,
+    rect: QRectF,
+    text: str,
+    color: str,
+    vertical: bool = False,
+) -> None:
     painter.setPen(QColor("#000000"))
     painter.drawRect(rect)
     if not text:
         return
     painter.setPen(_qcolor(color))
-    painter.drawText(rect, Qt.AlignCenter, text)
+    if vertical:
+        _draw_vertical(painter, rect, text)
+    else:
+        painter.drawText(rect, Qt.AlignCenter, text)
+
+
+def _draw_vertical(painter: QPainter, rect: QRectF, text: str) -> None:
+    """姓名直書：一個字一列由上往下。
+
+    ⚠️ 不要用 ``painter.rotate()`` 把整串字轉 90°——那是「橫書躺著」，不是直書，
+    紙本上的姓名是正的字疊下來。
+    """
+    metrics = painter.fontMetrics()
+    line_h = metrics.height()
+    total = line_h * len(text)
+    top = rect.top() + max(0.0, (rect.height() - total) / 2)
+    for index, char in enumerate(text):
+        painter.drawText(
+            QRectF(rect.left(), top + index * line_h, rect.width(), line_h),
+            Qt.AlignCenter,
+            char,
+        )

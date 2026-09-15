@@ -74,57 +74,81 @@ class TestXlsx(_TempDirCase):
     def test_title_is_in_the_first_cell(self):
         self.assertEqual(self.ws["A1"].value, self.sheet.title)
 
-    def test_every_model_row_becomes_a_worksheet_row(self):
-        # 第 1 列是標題，其後每列對應一個 Row。
-        self.assertEqual(self.ws.max_row, 1 + len(self.sheet.rows))
+    def test_every_model_column_becomes_a_worksheet_column(self):
+        self.assertEqual(self.ws.max_column, len(self.sheet.columns))
 
-    def test_day_columns_match_the_month_length(self):
-        self.assertEqual(self.ws.max_column, 2 + self.sheet.day_count)
+    def test_day_rows_match_the_month_length(self):
+        # 標題、姓名、代碼各一列，其後才是日期。
+        self.assertEqual(
+            self.ws.max_row,
+            xlsx_writer.ROW_FIRST_DAY - 1 + self.sheet.day_count,
+        )
 
     def test_cell_text_matches_the_model(self):
-        for offset, row in enumerate(self.sheet.rows):
-            excel_row = 2 + offset
-            self.assertEqual(self.ws.cell(row=excel_row, column=1).value, row.label)
-            for day, cell in enumerate(row.cells):
-                got = self.ws.cell(row=excel_row, column=3 + day).value
-                self.assertEqual(got or "", cell.text, f"{row.label} 第 {day+1} 天")
+        for index, column in enumerate(self.sheet.columns, start=1):
+            self.assertEqual(
+                self.ws.cell(row=xlsx_writer.ROW_NAME, column=index).value,
+                column.header,
+            )
+            for day, cell in enumerate(column.cells):
+                got = self.ws.cell(
+                    row=xlsx_writer.ROW_FIRST_DAY + day, column=index
+                ).value
+                self.assertEqual(
+                    got or "", cell.text, f"{column.header} 第 {day+1} 天"
+                )
 
     def test_rest_cells_are_red(self):
-        row = self.sheet.blocks[1].rows[5]      # 員06，1 日在第 6 格（休）
-        excel_row = 2 + self.sheet.rows.index(row)
-        cell = self.ws.cell(row=excel_row, column=3)
+        column = self.sheet.blocks[1].columns[5]   # 員06，1 日在第 6 格（休）
+        index = self.sheet.columns.index(column) + 1
+        cell = self.ws.cell(row=xlsx_writer.ROW_FIRST_DAY, column=index)
         self.assertEqual(cell.value, "00")
         self.assertEqual(cell.font.color.rgb, "FFCC0000")
 
-    def test_weekend_header_cells_are_red(self):
-        # ws[2] 從 A 欄起算，日期格從 C 欄（index 2）開始 → 第 n 天是 index n+1。
-        date_row = self.ws[2]
-        self.assertEqual(date_row[4].value, "3")            # 10/3 週六
-        self.assertEqual(date_row[4].font.color.rgb, "FFCC0000")
-        self.assertEqual(date_row[6].font.color.rgb, "FF000000")   # 10/5 週一
+    def test_weekend_day_cells_are_red_in_the_date_column(self):
+        third = self.ws.cell(row=xlsx_writer.ROW_FIRST_DAY + 2, column=1)
+        self.assertEqual(third.value, "3")                  # 10/3 週六
+        self.assertEqual(third.font.color.rgb, "FFCC0000")
+        monday = self.ws.cell(row=xlsx_writer.ROW_FIRST_DAY + 4, column=1)
+        self.assertEqual(monday.font.color.rgb, "FF000000")  # 10/5 週一
 
     def test_blank_section_cells_stay_empty(self):
         """⚠️ 固定番區留白供手填，renderer 不得代填。"""
-        block = self.sheet.blocks[3]
-        first = 2 + self.sheet.rows.index(block.rows[0])
+        column = self.sheet.blocks[3].columns[0]
+        index = self.sheet.columns.index(column) + 1
         for day in range(self.sheet.day_count):
-            self.assertIsNone(self.ws.cell(row=first, column=3 + day).value)
+            self.assertIsNone(
+                self.ws.cell(row=xlsx_writer.ROW_FIRST_DAY + day, column=index).value
+            )
 
     def test_blank_section_still_has_borders(self):
         """留白不等於沒有格線——手寫要有格子可以寫。"""
-        block = self.sheet.blocks[3]
-        first = 2 + self.sheet.rows.index(block.rows[0])
-        self.assertIsNotNone(self.ws.cell(row=first, column=3).border.left.style)
+        column = self.sheet.blocks[3].columns[0]
+        index = self.sheet.columns.index(column) + 1
+        cell = self.ws.cell(row=xlsx_writer.ROW_FIRST_DAY, column=index)
+        self.assertIsNotNone(cell.border.left.style)
 
     def test_fixed_group_code_is_written(self):
-        block = self.sheet.blocks[3]
-        first = 2 + self.sheet.rows.index(block.rows[0])
-        self.assertEqual(self.ws.cell(row=first, column=2).value, "21")
+        column = self.sheet.blocks[3].columns[0]
+        index = self.sheet.columns.index(column) + 1
+        self.assertEqual(
+            self.ws.cell(row=xlsx_writer.ROW_CODE, column=index).value, "21"
+        )
 
-    def test_shorter_month_produces_fewer_columns(self):
+    def test_member_names_are_written_vertically(self):
+        """紙本上姓名是直書。"""
+        column = self.sheet.blocks[1].columns[0]
+        index = self.sheet.columns.index(column) + 1
+        cell = self.ws.cell(row=xlsx_writer.ROW_NAME, column=index)
+        self.assertEqual(cell.alignment.textRotation, 255)
+
+    def test_shorter_month_produces_fewer_rows(self):
         path = str(self.dir / "feb.xlsx")
         xlsx_writer.write_sheet(sample_sheet(2025, 2), path)
-        self.assertEqual(load_workbook(path).active.max_column, 2 + 28)
+        self.assertEqual(
+            load_workbook(path).active.max_row,
+            xlsx_writer.ROW_FIRST_DAY - 1 + 28,
+        )
 
 
 @unittest.skipUnless(HAS_QT, "需要 PySide6（離線請設 QT_QPA_PLATFORM=offscreen）")

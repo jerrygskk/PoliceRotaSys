@@ -6,9 +6,14 @@
 版面定義，Excel 印出來和 PDF 才會長一樣。也因為它是純資料，「版面對不對」
 可以在無 GUI 環境自動驗證，不必每次都上機用眼睛看。
 
-版面照現行紙本（DEVELOPER.md §8）：
-  - A3 橫式單頁，標題直書置左
-  - 三個區塊上下堆疊，⚠️ 每個區塊前後都重複日期列與星期列
+⚠️ **軸向：日期是「列」，同仁是「欄」**（DEVELOPER.md §8）。
+
+    第一版做反了——日期當欄、姓名當列。會搞錯是因為紙本是旋轉 90° 掃描的，
+    掃描件上看起來像橫的東西，在原始 Excel 裡是直的。改之前先確認軸向。
+
+版面照現行紙本：
+  - A3 橫式單頁，標題橫置於頁首
+  - 三個區塊**左右並排**，⚠️ 日期／星期欄在每個區塊之間重複
   - 只有輪番區由程式填滿；固定番與休假打勤務兩區留白供手填
   - 休與週六日印紅色
 """
@@ -26,9 +31,9 @@ WEEKDAY_LABELS = ("一", "二", "三", "四", "五", "六", "日")
 SATURDAY = 5
 SUNDAY = 6
 
-ROW_DATE = "date"
-ROW_WEEKDAY = "weekday"
-ROW_MEMBER = "member"
+COL_DATE = "date"
+COL_WEEKDAY = "weekday"
+COL_MEMBER = "member"
 
 
 @dataclass(frozen=True)
@@ -38,20 +43,26 @@ class Cell:
 
 
 @dataclass(frozen=True)
-class Row:
+class Column:
+    """一欄。``cells`` 依序對應該月的每一天。"""
+
     kind: str
-    label: str = ""          # 姓名，或「日期」「星期」
-    code: str = ""           # 固定番／幹部的代碼，印在姓名旁
-    label_color: str = BLACK
+    header: str = ""          # 姓名，或「日期」「星期」
+    code: str = ""            # 固定番／幹部的代碼，印在姓名下
+    header_color: str = BLACK
     cells: tuple[Cell, ...] = ()
+
+    @property
+    def is_header(self) -> bool:
+        return self.kind in (COL_DATE, COL_WEEKDAY)
 
 
 @dataclass(frozen=True)
 class Block:
-    """一個橫幅區塊。``name`` 為空字串者是重複的日期／星期標頭。"""
+    """一個左右並排的區塊。``name`` 為空者是重複的日期／星期欄。"""
 
     name: str
-    rows: tuple[Row, ...]
+    columns: tuple[Column, ...]
 
     @property
     def is_header(self) -> bool:
@@ -61,21 +72,21 @@ class Block:
 @dataclass(frozen=True)
 class Sheet:
     title: str
-    year: int                # 西元
+    year: int                 # 西元
     month: int
     day_count: int
     blocks: tuple[Block, ...]
 
     @property
-    def rows(self) -> tuple[Row, ...]:
-        return tuple(row for block in self.blocks for row in block.rows)
+    def columns(self) -> tuple[Column, ...]:
+        return tuple(col for block in self.blocks for col in block.columns)
 
 
 @dataclass(frozen=True)
 class Entry:
-    """區塊裡的一列。
+    """區塊裡的一欄（一位同仁）。
 
-    ``slots`` 有值時由程式填滿（輪番區）；``None`` 表示整列留白供手填。
+    ``slots`` 有值時由程式填滿（輪番區）；``None`` 表示整欄留白供手填。
     """
 
     name: str
@@ -106,10 +117,10 @@ def _day_color(year: int, month: int, day: int) -> str:
     return RED if is_weekend(year, month, day) else BLACK
 
 
-def date_row(year: int, month: int, day_count: int) -> Row:
-    return Row(
-        kind=ROW_DATE,
-        label="日期",
+def date_column(year: int, month: int, day_count: int) -> Column:
+    return Column(
+        kind=COL_DATE,
+        header="日期",
         cells=tuple(
             Cell(str(day), _day_color(year, month, day))
             for day in range(1, day_count + 1)
@@ -117,10 +128,10 @@ def date_row(year: int, month: int, day_count: int) -> Row:
     )
 
 
-def weekday_row(year: int, month: int, day_count: int) -> Row:
-    return Row(
-        kind=ROW_WEEKDAY,
-        label="星期",
+def weekday_column(year: int, month: int, day_count: int) -> Column:
+    return Column(
+        kind=COL_WEEKDAY,
+        header="星期",
         cells=tuple(
             Cell(
                 WEEKDAY_LABELS[calendar.weekday(year, month, day)],
@@ -134,14 +145,14 @@ def weekday_row(year: int, month: int, day_count: int) -> Row:
 def _header_block(year: int, month: int, day_count: int) -> Block:
     return Block(
         name="",
-        rows=(
-            date_row(year, month, day_count),
-            weekday_row(year, month, day_count),
+        columns=(
+            date_column(year, month, day_count),
+            weekday_column(year, month, day_count),
         ),
     )
 
 
-def _member_row(entry: Entry, day_count: int, rest_code: str) -> Row:
+def _member_column(entry: Entry, day_count: int, rest_code: str) -> Column:
     if entry.slots is None:
         cells = tuple(Cell() for _ in range(day_count))
     else:
@@ -154,7 +165,9 @@ def _member_row(entry: Entry, day_count: int, rest_code: str) -> Row:
             Cell(rest_code, RED) if slot.is_rest else Cell(slot.code, BLACK)
             for slot in entry.slots
         )
-    return Row(kind=ROW_MEMBER, label=entry.name, code=entry.code, cells=cells)
+    return Column(
+        kind=COL_MEMBER, header=entry.name, code=entry.code, cells=cells
+    )
 
 
 def build_sheet(
@@ -166,7 +179,7 @@ def build_sheet(
 ) -> Sheet:
     """組出整張表。``year`` 為**西元**，標題自動轉民國。
 
-    ⚠️ 每個區塊前後都插入日期／星期標頭，這是紙本既有的設計不是冗餘——
+    ⚠️ 每個區塊左右都插入日期／星期欄，這是紙本既有的設計不是冗餘——
     A3 很寬，沒有重複標頭就得拿尺對格子。
     """
     if not sections:
@@ -178,8 +191,8 @@ def build_sheet(
         blocks.append(
             Block(
                 name=section.name,
-                rows=tuple(
-                    _member_row(entry, day_count, rest_code)
+                columns=tuple(
+                    _member_column(entry, day_count, rest_code)
                     for entry in section.entries
                 ),
             )

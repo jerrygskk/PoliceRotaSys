@@ -2,6 +2,8 @@
 
 與 ``pdf_writer`` 吃同一份 :class:`lib.layout_model.Sheet`，兩邊才會長一樣。
 
+⚠️ **X 軸是人名（欄），Y 軸是日期（列）**。第一版做反了，見 layout_model 的說明。
+
 ⚠️ 這裡只負責「把版面模型畫出來」，不做任何排班判斷。要改番號怎麼算請去
 ``lib/rota.py``；要改表怎麼排請去 ``lib/layout_model.py``。
 """
@@ -12,18 +14,22 @@ from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-from lib.layout_model import RED, ROW_MEMBER, Sheet
+from lib.layout_model import COL_MEMBER, RED, Sheet
 
-PAPER_A3 = "A3"
 FONT_NAME = "標楷體"
 FONT_SIZE = 10
 TITLE_FONT_SIZE = 14
 
-# 欄寬：第 1 欄放姓名、第 2 欄放代碼，其餘 31 欄是日期格。
-LABEL_COL_WIDTH = 12
-CODE_COL_WIDTH = 5
-DAY_COL_WIDTH = 3.2
-ROW_HEIGHT = 18
+HEADER_COL_WIDTH = 5.5     # 日期／星期欄
+MEMBER_COL_WIDTH = 5.0     # 姓名欄
+TITLE_ROW_HEIGHT = 26
+NAME_ROW_HEIGHT = 46       # 姓名直書，要高一點
+ROW_HEIGHT = 16
+
+ROW_TITLE = 1
+ROW_NAME = 2
+ROW_CODE = 3
+ROW_FIRST_DAY = 4
 
 _RED = "FFCC0000"
 _BLACK = "FF000000"
@@ -31,17 +37,22 @@ _BLACK = "FF000000"
 _THIN = Side(style="thin", color=_BLACK)
 _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
 _CENTER = Alignment(horizontal="center", vertical="center")
+# 姓名直書（Excel 的 textRotation 255 ＝ 直排）。
+_VERTICAL = Alignment(horizontal="center", vertical="center", textRotation=255)
 
 
 def _argb(color: str) -> str:
     return _RED if color == RED else _BLACK
 
 
-def _setup_page(ws: Worksheet, day_count: int) -> None:
-    """A3 橫式、單頁。
 
-    ⚠️ ``fitToHeight = False`` 不夠——還要把 ``sheetProperties.pageSetUpPr``
-    的 fitToPage 打開，否則 Excel 不會理會縮放設定。
+
+
+def _setup_page(ws: Worksheet, sheet: Sheet) -> None:
+    """A3 橫式、縮成一頁。
+
+    ⚠️ 只設 ``page_setup`` 不夠——還要打開 ``sheetProperties.pageSetUpPr``
+    的 fitToPage，否則 Excel 直接忽略縮放設定（PITFALLS XLS-2）。
     """
     ws.page_setup.paperSize = ws.PAPERSIZE_A3
     ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
@@ -50,43 +61,40 @@ def _setup_page(ws: Worksheet, day_count: int) -> None:
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.print_options.horizontalCentered = True
 
-    ws.column_dimensions["A"].width = LABEL_COL_WIDTH
-    ws.column_dimensions["B"].width = CODE_COL_WIDTH
-    for index in range(3, 3 + day_count):
-        ws.column_dimensions[get_column_letter(index)].width = DAY_COL_WIDTH
+    for index, column in enumerate(sheet.columns, start=1):
+        ws.column_dimensions[get_column_letter(index)].width = (
+            MEMBER_COL_WIDTH if column.kind == COL_MEMBER else HEADER_COL_WIDTH
+        )
 
 
-def _write_title(ws: Worksheet, sheet: Sheet) -> int:
-    ws.cell(row=1, column=1, value=sheet.title).font = Font(
-        name=FONT_NAME, size=TITLE_FONT_SIZE, bold=True
-    )
+def _write_title(ws: Worksheet, sheet: Sheet, column_count: int) -> None:
+    cell = ws.cell(row=ROW_TITLE, column=1, value=sheet.title)
+    cell.font = Font(name=FONT_NAME, size=TITLE_FONT_SIZE, bold=True)
+    cell.alignment = _CENTER
     ws.merge_cells(
-        start_row=1, start_column=1, end_row=1, end_column=2 + sheet.day_count
+        start_row=ROW_TITLE, start_column=1,
+        end_row=ROW_TITLE, end_column=column_count,
     )
-    ws.cell(row=1, column=1).alignment = _CENTER
-    ws.row_dimensions[1].height = 26
-    return 2
+    ws.row_dimensions[ROW_TITLE].height = TITLE_ROW_HEIGHT
 
 
-def _write_row(ws: Worksheet, excel_row: int, row, day_count: int) -> None:
-    ws.row_dimensions[excel_row].height = ROW_HEIGHT
+def _write_column(ws: Worksheet, index: int, column, day_count: int) -> None:
+    header = ws.cell(row=ROW_NAME, column=index, value=column.header)
+    header.font = Font(
+        name=FONT_NAME, size=FONT_SIZE, color=_argb(column.header_color), bold=True
+    )
+    header.alignment = _VERTICAL if column.kind == COL_MEMBER else _CENTER
+    header.border = _BORDER
 
-    label = ws.cell(row=excel_row, column=1, value=row.label)
-    label.font = Font(name=FONT_NAME, size=FONT_SIZE, color=_argb(row.label_color))
-    label.alignment = _CENTER
-    label.border = _BORDER
-
-    code = ws.cell(row=excel_row, column=2, value=row.code or None)
+    code = ws.cell(row=ROW_CODE, column=index, value=column.code or None)
     code.font = Font(name=FONT_NAME, size=FONT_SIZE)
     code.alignment = _CENTER
     code.border = _BORDER
 
-    for offset in range(day_count):
-        cell_model = row.cells[offset]
-        cell = ws.cell(row=excel_row, column=3 + offset, value=cell_model.text or None)
-        cell.font = Font(
-            name=FONT_NAME, size=FONT_SIZE, color=_argb(cell_model.color)
-        )
+    for day in range(day_count):
+        model = column.cells[day]
+        cell = ws.cell(row=ROW_FIRST_DAY + day, column=index, value=model.text or None)
+        cell.font = Font(name=FONT_NAME, size=FONT_SIZE, color=_argb(model.color))
         cell.alignment = _CENTER
         cell.border = _BORDER
 
@@ -97,19 +105,23 @@ def write_sheet(sheet: Sheet, path: str) -> None:
     ws = wb.active
     ws.title = f"{sheet.month}月"
 
-    _setup_page(ws, sheet.day_count)
-    excel_row = _write_title(ws, sheet)
+    columns = sheet.columns
+    _setup_page(ws, sheet)
+    _write_title(ws, sheet, len(columns))
 
-    for block in sheet.blocks:
-        for row in block.rows:
-            _write_row(ws, excel_row, row, sheet.day_count)
-            excel_row += 1
+    ws.row_dimensions[ROW_NAME].height = NAME_ROW_HEIGHT
+    ws.row_dimensions[ROW_CODE].height = ROW_HEIGHT
+    for day in range(sheet.day_count):
+        ws.row_dimensions[ROW_FIRST_DAY + day].height = ROW_HEIGHT
 
-    # 凍結窗格：捲動時姓名欄與標題留在畫面上。
-    ws.freeze_panes = "C3"
+    for index, column in enumerate(columns, start=1):
+        _write_column(ws, index, column, sheet.day_count)
+
+    # 凍結窗格：捲動時標題列與最左邊的日期欄留在畫面上。
+    ws.freeze_panes = ws.cell(row=ROW_FIRST_DAY, column=3)
     wb.save(path)
 
 
-def member_row_count(sheet: Sheet) -> int:
-    """整張表有幾列是人（測試與版面估算用）。"""
-    return sum(1 for row in sheet.rows if row.kind == ROW_MEMBER)
+def member_column_count(sheet: Sheet) -> int:
+    """整張表有幾欄是人（測試與版面估算用）。"""
+    return sum(1 for column in sheet.columns if column.kind == COL_MEMBER)

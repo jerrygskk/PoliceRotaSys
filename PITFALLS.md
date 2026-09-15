@@ -15,6 +15,18 @@
   所以**照樣全綠**。已移除該行並在 `.gitignore` 留註解。
   ⚠️ 新增頂層目錄時順手 `git check-ignore -v <路徑>` 確認一下。
 
+#### LAY：版面
+
+- **LAY-1**: **整張表的軸向做反（日期當欄、姓名當列）** → 紙本是**旋轉 90°
+  掃描**的，掃描件上看起來橫的東西在原始 Excel 裡是直的。正解：**X 軸是人名
+  （一人一欄）、Y 軸是日期（一天一列）**，三個區塊左右並排、日期與星期欄在
+  區塊之間重複。⚠️ 動版面前先確認軸向；回歸測試
+  `tests/test_layout_model.py::TestAxisOrientation`。
+- **LAY-2**: **姓名直書畫成「橫書躺著」** → 不要用 `painter.rotate()` 把整串字
+  轉 90°，紙本上的姓名是**正的字一個個疊下來**。PDF 走
+  `pdf_writer._draw_vertical`（逐字畫）；xlsx 用 `textRotation=255`（Excel 的
+  直排值，不是 90）。
+
 #### XLS：openpyxl
 
 - **XLS-1**: **`page_setup.paperSize` 拿常數比對得到 `8 != '8'` 的假失敗**

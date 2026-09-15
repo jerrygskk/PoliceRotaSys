@@ -202,8 +202,8 @@ class TestBuildSheetFor(_PlanTestCase):
     def test_rotate_block_is_filled(self):
         self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
-        row = sheet.blocks[1].rows[0]
-        self.assertTrue(any(cell.text for cell in row.cells))
+        column = sheet.blocks[1].columns[0]
+        self.assertTrue(any(cell.text for cell in column.cells))
 
     def test_fixed_block_is_blank_but_carries_the_code(self):
         """⚠️ 固定番區留白供手填，只印姓名與代碼。"""
@@ -211,14 +211,14 @@ class TestBuildSheetFor(_PlanTestCase):
         seeds[self.gid["固定番"]] = {self.members[18]: 1}
         self.make_plan(seeds=seeds)
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
-        row = sheet.blocks[3].rows[0]
-        self.assertEqual(row.code, "21")
-        self.assertTrue(all(cell.text == "" for cell in row.cells))
+        column = sheet.blocks[3].columns[0]
+        self.assertEqual(column.code, "21")
+        self.assertTrue(all(cell.text == "" for cell in column.cells))
 
     def test_member_names_come_from_the_member_table(self):
         self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
-        self.assertEqual(sheet.blocks[1].rows[0].label, db_seed.SEED_MEMBERS[0])
+        self.assertEqual(sheet.blocks[1].columns[0].header, db_seed.SEED_MEMBERS[0])
 
     def test_title_uses_the_unit_name_setting(self):
         self.make_plan()
@@ -229,9 +229,9 @@ class TestBuildSheetFor(_PlanTestCase):
         seeds = {self.gid["大輪番"]: {self.members[0]: 12}}
         self.make_plan(seeds=seeds)
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
-        row = sheet.blocks[1].rows[0]
+        column = sheet.blocks[1].columns[0]
         self.assertEqual(
-            [c.text for c in row.cells[:10]],
+            [c.text for c in column.cells[:10]],
             ["12", "00", "00", "15", "16", "17", "18", "00", "00", "01"],
         )
 

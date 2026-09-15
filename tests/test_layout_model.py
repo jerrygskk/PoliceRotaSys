@@ -3,10 +3,10 @@ import unittest
 
 from lib.layout_model import (
     BLACK,
+    COL_DATE,
+    COL_MEMBER,
+    COL_WEEKDAY,
     RED,
-    ROW_DATE,
-    ROW_MEMBER,
-    ROW_WEEKDAY,
     Entry,
     Section,
     build_sheet,
@@ -67,54 +67,75 @@ class TestBuildSheet(unittest.TestCase):
         self.assertEqual(self.sheet.day_count, 31)
         self.assertEqual(build_sheet(UNIT, 2025, 2, [rotate_section(2025, 2)]).day_count, 28)
 
-    def test_header_repeats_before_and_after_every_block(self):
+    def test_header_repeats_between_every_block(self):
         """⚠️ 紙本既有設計：A3 很寬，沒有重複標頭就得拿尺對格子。"""
         kinds = [b.is_header for b in self.sheet.blocks]
         self.assertEqual(kinds, [True, False, True, False, True])
 
-    def test_every_row_has_one_cell_per_day(self):
-        for row in self.sheet.rows:
-            self.assertEqual(len(row.cells), 31, row.label)
+    def test_every_column_has_one_cell_per_day(self):
+        for column in self.sheet.columns:
+            self.assertEqual(len(column.cells), 31, column.header)
 
     def test_rest_cells_are_red_double_zero(self):
-        row = self.sheet.blocks[1].rows[0]      # 王小明，1 日在第 12 格
-        self.assertEqual(row.cells[1].text, "00")
-        self.assertEqual(row.cells[1].color, RED)
+        column = self.sheet.blocks[1].columns[0]   # 王小明，1 日在第 12 格
+        self.assertEqual(column.cells[1].text, "00")
+        self.assertEqual(column.cells[1].color, RED)
 
     def test_duty_cells_are_black(self):
-        row = self.sheet.blocks[1].rows[0]
-        self.assertEqual(row.cells[0].text, "12")
-        self.assertEqual(row.cells[0].color, BLACK)
+        column = self.sheet.blocks[1].columns[0]
+        self.assertEqual(column.cells[0].text, "12")
+        self.assertEqual(column.cells[0].color, BLACK)
 
-    def test_weekend_columns_are_red_in_both_header_rows(self):
-        header = self.sheet.blocks[0]
-        date, weekday = header.rows
-        self.assertEqual(date.kind, ROW_DATE)
-        self.assertEqual(weekday.kind, ROW_WEEKDAY)
+    def test_weekend_rows_are_red_in_both_header_columns(self):
+        date, weekday = self.sheet.blocks[0].columns
+        self.assertEqual(date.kind, COL_DATE)
+        self.assertEqual(weekday.kind, COL_WEEKDAY)
         self.assertEqual(date.cells[2].color, RED)      # 10/3 週六
         self.assertEqual(weekday.cells[2].text, "六")
         self.assertEqual(weekday.cells[2].color, RED)
         self.assertEqual(date.cells[4].color, BLACK)    # 10/5 週一
 
-    def test_blank_section_rows_are_empty_but_still_sized(self):
+    def test_blank_section_columns_are_empty_but_still_sized(self):
         """⚠️ 固定番與幹部區刻意留白供手填，程式不要自作聰明去填。"""
         block = self.sheet.blocks[3]
         self.assertEqual(block.name, "固定番")
-        for row in block.rows:
-            self.assertEqual(len(row.cells), 31)
-            self.assertTrue(all(cell.text == "" for cell in row.cells))
+        for column in block.columns:
+            self.assertEqual(len(column.cells), 31)
+            self.assertTrue(all(cell.text == "" for cell in column.cells))
 
-    def test_blank_section_rows_keep_their_code(self):
-        self.assertEqual(self.sheet.blocks[3].rows[0].code, "21")
+    def test_blank_section_columns_keep_their_code(self):
+        self.assertEqual(self.sheet.blocks[3].columns[0].code, "21")
 
-    def test_member_rows_are_marked_as_such(self):
+    def test_member_columns_are_marked_as_such(self):
         self.assertTrue(
-            all(row.kind == ROW_MEMBER for row in self.sheet.blocks[1].rows)
+            all(col.kind == COL_MEMBER for col in self.sheet.blocks[1].columns)
         )
 
     def test_custom_rest_code_is_honoured(self):
         sheet = build_sheet(UNIT, 2026, 10, [rotate_section()], rest_code="休")
-        self.assertEqual(sheet.blocks[1].rows[0].cells[1].text, "休")
+        self.assertEqual(sheet.blocks[1].columns[0].cells[1].text, "休")
+
+
+class TestAxisOrientation(unittest.TestCase):
+    """⚠️ X 軸是人名（欄）、Y 軸是日期（列）。第一版做反了，這支釘住它。"""
+
+    def setUp(self):
+        self.sheet = build_sheet(UNIT, 2026, 10, [rotate_section(), blank_section()])
+
+    def test_each_member_is_one_column(self):
+        names = [
+            col.header for col in self.sheet.columns if col.kind == COL_MEMBER
+        ]
+        self.assertEqual(names, ["王小明", "李小華", "張大同", "陳小美"])
+
+    def test_each_column_runs_down_the_days_of_the_month(self):
+        column = self.sheet.blocks[1].columns[0]
+        self.assertEqual(len(column.cells), self.sheet.day_count)
+
+    def test_the_date_column_counts_from_one_to_the_month_length(self):
+        date = self.sheet.blocks[0].columns[0]
+        self.assertEqual(date.cells[0].text, "1")
+        self.assertEqual(date.cells[-1].text, "31")
 
 
 class TestBuildSheetErrors(unittest.TestCase):
@@ -137,18 +158,18 @@ class TestPaperFidelity(unittest.TestCase):
         "01", "02", "03", "04", "05", "00", "00", "08",
     ]
 
-    def test_first_row_text_matches_paper(self):
+    def test_first_column_text_matches_paper(self):
         sheet = build_sheet(UNIT, 2026, 10, [rotate_section(seeds={"王小明": 12})])
-        row = sheet.blocks[1].rows[0]
+        column = sheet.blocks[1].columns[0]
         self.assertEqual(
-            [cell.text for cell in row.cells[: len(self.PAPER_ROW)]],
+            [cell.text for cell in column.cells[: len(self.PAPER_ROW)]],
             self.PAPER_ROW,
         )
 
-    def test_rest_days_are_the_only_red_cells_in_a_member_row(self):
+    def test_rest_days_are_the_only_red_cells_in_a_member_column(self):
         sheet = build_sheet(UNIT, 2026, 10, [rotate_section(seeds={"王小明": 12})])
-        row = sheet.blocks[1].rows[0]
-        for cell in row.cells:
+        column = sheet.blocks[1].columns[0]
+        for cell in column.cells:
             self.assertEqual(cell.color == RED, cell.text == "00")
 
 
