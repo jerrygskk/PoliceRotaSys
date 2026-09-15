@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 
 from lib import members
 from lib.db_utils import opened
-from ui_utils import confirmBox, msgWarning, msgCritical, preserveScroll, styleButton
+from ui_utils import confirmBox, msgWarning, preserveScroll, reportError, styleButton
 from ui_utils.card import Card
 from ui_utils.member_dialog import MemberDialog
 from ui_utils.sort_table import (
@@ -87,8 +87,8 @@ class TabPersonnel(QWidget):
         try:
             with opened(self.db_path) as conn:
                 rows = members.list_members(conn)
-        except Exception as e:
-            msgCritical("DB錯誤", f"讀取人員名單失敗：{e}", self)
+        except Exception as exc:
+            reportError("讀取人員名單失敗", exc, self)
             return
         self._rows = [list(r) for r in rows]
         self._setDirty(False)
@@ -163,8 +163,8 @@ class TabPersonnel(QWidget):
         try:
             with opened(self.db_path) as conn:
                 members.save_order(conn, [r[0] for r in self._rows])
-        except Exception as e:
-            msgCritical("儲存失敗", f"儲存排序失敗：{e}", self)
+        except Exception as exc:
+            reportError("儲存排序失敗", exc, self)
             return False
         self._setDirty(False)
         return True

@@ -105,8 +105,37 @@ class TestTabRules(_TempDb):
         self.assertIn("休", self.tab.slotTiles[5].text())
         self.assertEqual(self.tab.slotTiles[5].property("state"), "rest")
         self.tab._onSlotClicked(5)
+        self.tab._click_timer.stop()          # 單擊延後執行，測試裡直接催它
+        self.tab._applyPendingSlotClick()
         self.assertNotIn("休", self.tab.slotTiles[5].text())
         self.assertEqual(self.tab.slotTiles[5].property("state"), "work")
+
+    def test_double_click_does_not_toggle_rest(self):
+        """⚠️ 雙擊會先送一次單擊：單擊要延後，雙擊時取消，不能靠事後切回來補償。"""
+        self.tab.tbl_groups.selectRow(0)
+        before = self.tab.slotTiles[0].text()
+        self.tab._onSlotClicked(0)                     # 雙擊的第一下
+        with mock.patch.object(tab_rules, "askText", return_value=("", False)):
+            self.tab._onSlotDoubleClicked(0)
+        self.assertIsNone(self.tab._pending_slot)
+        self.assertFalse(self.tab._click_timer.isActive())
+        self.tab._applyPendingSlotClick()              # 就算被叫到也不該改東西
+        self.assertEqual(self.tab.slotTiles[0].text(), before)
+
+    def test_single_click_toggles_after_the_delay(self):
+        self.tab.tbl_groups.selectRow(0)
+        self.tab._onSlotClicked(0)
+        self.assertTrue(self.tab._click_timer.isActive())
+        self.tab._click_timer.stop()
+        self.tab._applyPendingSlotClick()
+        self.assertIn("輪休", self.tab.slotTiles[0].text())
+
+    def test_cancelling_the_code_dialog_changes_nothing(self):
+        self.tab.tbl_groups.selectRow(0)
+        before = self.tab.slotTiles[2].text()
+        with mock.patch.object(tab_rules, "askText", return_value=("ZZ", False)):
+            self.tab._onSlotDoubleClicked(2)
+        self.assertEqual(self.tab.slotTiles[2].text(), before)
 
     def test_reorder_then_save(self):
         first, second = [g["name"] for g in self.groups()[:2]]
@@ -151,7 +180,7 @@ class TestTabRules(_TempDb):
     def test_activate_blocked_when_codes_overlap(self):
         with opened(self.db) as conn:
             ruleset.add_group(conn, self.draft, "撞號組", MODE_ROTATE, "18-25")   # 與大輪番 18-20 撞號
-        with mock.patch.object(tab_rules, "msgWarning") as warn, \
+        with mock.patch.object(tab_rules, "reportError") as warn, \
              mock.patch.object(tab_rules, "confirmBox") as ask:
             self.tab._activate()
         warn.assert_called_once()

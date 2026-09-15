@@ -9,17 +9,21 @@
 ⚠️ 選到啟用版本時整個編輯區唯讀。按鈕反灰擋不住雙擊、點方塊、Enter、拖拉，
 所以**每個進入點都自己檢查一次** `_editable()`；真正的保證仍在資料庫 trigger。
 """
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QListWidget, QListWidgetItem,
     QHeaderView, QLabel, QSplitter, QGridLayout, QTableWidget, QCheckBox,
+    QApplication,
 )
 
 from lib import ruleset
 from lib.db_utils import KEY_SLOT_NUMBER_FROM_ONE, get_setting, opened, set_setting
 from lib.members import parse_seq_move_target
 from lib.rota import KIND_ALPHA, KIND_CJK, KIND_NUM, MODE_BLANK, MODE_ROTATE, RangeError, detect_kind
-from ui_utils import BTN_ROW_SPACING, confirmBox, msgInfo, msgWarning, preserveScroll, styleButton
+from ui_utils import (
+    BTN_ROW_SPACING, confirmBox, msgInfo, msgWarning, preserveScroll,
+    reportError, styleButton,
+)
 from ui_utils.card import Card, cardHint, infoBanner, setTone
 from ui_utils.group_dialog import GroupDialog
 from ui_utils.sort_table import makeHandleItem, makeItem, makeSeqItem, setupSortTable
@@ -126,6 +130,12 @@ class TabRules(QWidget):
         self._slot_seqs = []
         self.slotTiles = []
         self._dirty = False
+        # 單擊切輪休要延後執行：Qt 的雙擊一定先送一次單擊，立刻切會先切掉再切回來，
+        # 補償失敗就畫面與資料庫不一致（檢視發現）。改成等雙擊時限過了才真的切。
+        self._pending_slot = None
+        self._click_timer = QTimer(self)
+        self._click_timer.setSingleShot(True)
+        self._click_timer.timeout.connect(self._applyPendingSlotClick)
         self._build()
         self.reload()
 
@@ -336,7 +346,7 @@ class TabRules(QWidget):
                     rid = row[0]
                 vid = ruleset.create_draft(conn, rid, name)
         except Exception as exc:
-            msgWarning("無法新增草稿", _friendly(exc), self)
+            reportError("無法新增草稿", exc, self)
             return
         self.reload(vid)
 
@@ -353,7 +363,7 @@ class TabRules(QWidget):
             with opened(self.db_path) as conn:
                 vid = ruleset.copy_to_draft(conn, v["version_id"], name)
         except Exception as exc:
-            msgWarning("無法複製", _friendly(exc), self)
+            reportError("無法複製", exc, self)
             return
         self.reload(vid)
 
@@ -368,7 +378,7 @@ class TabRules(QWidget):
             with opened(self.db_path) as conn:
                 ruleset.rename_draft(conn, v["version_id"], name)
         except Exception as exc:
-            msgWarning("無法改名", _friendly(exc), self)
+            reportError("無法改名", exc, self)
             return
         self.reload(v["version_id"])
 
@@ -384,7 +394,7 @@ class TabRules(QWidget):
             with opened(self.db_path) as conn:
                 ruleset.delete_draft(conn, v["version_id"])
         except Exception as exc:
-            msgWarning("無法刪除", _friendly(exc), self)
+            reportError("無法刪除", exc, self)
             return
         self._setDirty(False)
         self.list_versions.setCurrentRow(-1)
@@ -399,7 +409,7 @@ class TabRules(QWidget):
                 ruleset.check_version(conn, v["version_id"])
                 next_no = ruleset.next_version_no(conn)
         except Exception as exc:
-            msgWarning("無法啟用", _friendly(exc), self)
+            reportError("無法啟用", exc, self)
             return
         if not confirmBox("啟用規則", f"確定將草稿「{v['draft_name']}」啟用為 v{next_no}？",
                           confirm_text="啟用", default_confirm=False,
@@ -409,7 +419,7 @@ class TabRules(QWidget):
             with opened(self.db_path) as conn:
                 ruleset.activate(conn, v["version_id"])
         except Exception as exc:
-            msgWarning("無法啟用", _friendly(exc), self)
+            reportError("無法啟用", exc, self)
             return
         self.reload(v["version_id"])
 
@@ -493,7 +503,7 @@ class TabRules(QWidget):
             with opened(self.db_path) as conn:
                 ruleset.save_group_order(conn, [g[0] for g in self._groups])
         except Exception as exc:
-            msgWarning("儲存失敗", _friendly(exc), self)
+            reportError("儲存失敗", exc, self)
             return False
         self._setDirty(False)
         return True
@@ -564,7 +574,7 @@ class TabRules(QWidget):
             with opened(self.db_path) as conn:
                 ruleset.delete_group(conn, gid)
         except Exception as exc:
-            msgWarning("無法刪除", _friendly(exc), self)
+            reportError("無法刪除", exc, self)
             return
         self._reloadGroupsPreservingOrder()
 
@@ -576,7 +586,7 @@ class TabRules(QWidget):
             with opened(self.db_path) as conn:
                 ruleset.check_version(conn, v["version_id"])
         except Exception as exc:
-            msgWarning("規則有問題", _friendly(exc), self)
+            reportError("規則有問題", exc, self)
             return
         msgInfo("檢查完成", "所有群組檢查無誤：代碼沒有撞號，輪番群組都有人上班。", self)
 
@@ -667,6 +677,17 @@ class TabRules(QWidget):
         return self._slot_seqs[index] if 0 <= index < len(self._slot_seqs) else None
 
     def _onSlotClicked(self, index):
+        """單擊＝切換輪休，但延後到雙擊時限過後才做（雙擊會先送一次單擊）。"""
+        group, seq = self._currentGroup(), self._slotAt(index)
+        if not self._editable() or group is None or seq is None or group[2] != MODE_ROTATE:
+            return
+        self._pending_slot = index
+        self._click_timer.start(QApplication.doubleClickInterval())
+
+    def _applyPendingSlotClick(self):
+        index, self._pending_slot = self._pending_slot, None
+        if index is None:
+            return
         group, seq = self._currentGroup(), self._slotAt(index)
         if not self._editable() or group is None or seq is None or group[2] != MODE_ROTATE:
             return
@@ -674,7 +695,7 @@ class TabRules(QWidget):
             with opened(self.db_path) as conn:
                 ruleset.toggle_rest(conn, group[0], seq)
         except Exception as exc:
-            msgWarning("無法修改", _friendly(exc), self)
+            reportError("無法修改", exc, self)
             return
         self._renderSlots()
 
@@ -682,13 +703,9 @@ class TabRules(QWidget):
         group, seq = self._currentGroup(), self._slotAt(index)
         if not self._editable() or group is None or seq is None or group[2] == MODE_BLANK:
             return
-        if group[2] == MODE_ROTATE:
-            # 雙擊會先觸發一次單擊（切換休），這裡切回來，雙擊只做自訂代碼。
-            try:
-                with opened(self.db_path) as conn:
-                    ruleset.toggle_rest(conn, group[0], seq)
-            except Exception:
-                pass
+        # 取消排隊中的單擊：雙擊只做自訂代碼，不順手切掉輪休
+        self._click_timer.stop()
+        self._pending_slot = None
         codes = ruleset.expand_codes(group[2], group[3])
         with opened(self.db_path) as conn:
             current = ruleset.slot_rows(conn, group[0])[seq - 1]["code_override"] or codes[seq - 1]
@@ -699,11 +716,5 @@ class TabRules(QWidget):
                 with opened(self.db_path) as conn:
                     ruleset.set_code_override(conn, group[0], seq, code)
             except Exception as exc:
-                msgWarning("無法修改", _friendly(exc), self)
+                reportError("無法修改", exc, self)
         self._renderSlots()
-
-
-def _friendly(exc):
-    """資料庫 trigger 的中文訊息原樣給使用者；其餘附上原文。"""
-    msg = str(exc)
-    return msg if any("一" <= ch <= "鿿" for ch in msg) else f"操作失敗：{msg}"

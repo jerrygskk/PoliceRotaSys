@@ -42,8 +42,13 @@ class TestExports(unittest.TestCase):
                 self.assertTrue(hasattr(ui_utils, name), f"{name} 匯出了卻不存在")
 
     def test_no_document_specific_leftovers(self):
-        for name in ("reportError", "RecipientCombo", "setupRecipientCombo"):
+        for name in ("RecipientCombo", "setupRecipientCombo"):
             self.assertFalse(hasattr(ui_utils, name), f"{name} 是公文專屬，不該留著")
+
+    def test_error_helpers_are_available(self):
+        """reportError 是本專案自己的版本（寫 error.log ＋ 白話訊息），必須存在。"""
+        for name in ("reportError", "friendlyErrorMessage"):
+            self.assertTrue(callable(getattr(ui_utils, name, None)), name)
 
     def test_fixed_col_widths_starts_empty(self):
         self.assertEqual(ui_utils.FIXED_COL_WIDTHS, {})

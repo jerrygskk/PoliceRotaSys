@@ -4,6 +4,7 @@
 
 from .ui_common import (
     msgInfo, msgWarning, msgCritical, confirmBox, loadUi,
+    friendlyErrorMessage, reportError,
     BTN_CONFIRM, BTN_DANGER, BTN_CANCEL, BTN_ROW_SPACING, styleButton,
 )
 from .widgets import (
@@ -28,6 +29,7 @@ from .table import (
 
 __all__ = [
     "msgInfo", "msgWarning", "msgCritical", "confirmBox", "loadUi",
+    "friendlyErrorMessage", "reportError",
     "BTN_CONFIRM", "BTN_DANGER", "BTN_CANCEL", "BTN_ROW_SPACING", "styleButton",
     "setupFilterCombo", "refreshFilterCombo", "attachComboHint",
     "setupDateEditToToday", "setupDateEditCalendarOnly",

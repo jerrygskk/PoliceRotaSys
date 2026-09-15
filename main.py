@@ -5,6 +5,7 @@
 
 ⚠️ 目前有「輪番設定」「人員」分頁；產生月表／維護兩頁依序補上（DEVELOPER §4）。
 """
+import logging
 import os
 import sys
 
@@ -23,6 +24,7 @@ from ui_utils import installDateEditInputGuard
 
 APP_NAME = "警察勤務輪番表產生器"
 DB_NAME = "dbfile.db"
+LOG_NAME = "error.log"
 
 
 def db_file_path():
@@ -30,6 +32,14 @@ def db_file_path():
     base = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
             else os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, DB_NAME)
+
+
+def setup_logging(log_path):
+    """把未預期的錯誤寫進程式目錄的 error.log（ui_utils.reportError 會用到）。"""
+    logging.basicConfig(
+        filename=log_path, filemode="a", encoding="utf-8", level=logging.ERROR,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
 
 
 def prepare_database(db_path):
@@ -64,6 +74,7 @@ class MainWindow(QMainWindow):
 
 def main():
     db_path = db_file_path()
+    setup_logging(os.path.join(os.path.dirname(db_path), LOG_NAME))
     prepare_database(db_path)
 
     app = QApplication(sys.argv)

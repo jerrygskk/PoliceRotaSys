@@ -50,6 +50,40 @@ def msgCritical(title, text, parent=None):
 
 
 # ── 通用確認彈窗 ───────────────────────────────────────────────
+def friendlyErrorMessage(exc):
+    """把例外轉成使用者看得懂的訊息。
+
+    ⚠️ 只有**本專案自己丟出的**錯誤才原樣顯示——那些訊息是寫給承辦人看的。
+    其餘（SQLite 原文如 database is locked、程式 bug 的 TypeError）一律換成
+    固定白話，原文寫進 error.log。舊寫法以「訊息裡有沒有中文」判斷，
+    會把英文原文直接丟給使用者。
+    """
+    import sqlite3
+    from lib.plan import PlanError
+    from lib.rota import GroupError, RangeError
+    from lib.ruleset import RulesetError
+
+    if isinstance(exc, (RulesetError, PlanError, RangeError, GroupError)):
+        return str(exc)
+    if isinstance(exc, sqlite3.DatabaseError):
+        return "資料庫存取失敗，操作未完成。詳細內容已記錄在 error.log。"
+    if isinstance(exc, OSError):
+        return "檔案存取失敗，操作未完成。詳細內容已記錄在 error.log。"
+    return "操作未完成，發生未預期的錯誤。詳細內容已記錄在 error.log。"
+
+
+def reportError(title, exc, parent=None):
+    """except 區塊統一處理：寫 error.log（完整 traceback）＋彈白話視窗。
+
+    ⚠️ 不要只彈訊息不記錄——現場回報「剛剛跳了一個錯」時會完全無從查起。
+    """
+    import logging
+    import traceback
+    logging.error("%s\n%s", title,
+                  "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+    msgWarning(title, friendlyErrorMessage(exc), parent)
+
+
 def confirmBox(title, text, confirm_text="確認", cancel_text="取消",
                confirm_danger=False, default_confirm=True, parent=None,
                informative="", min_width=0):
