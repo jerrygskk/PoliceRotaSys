@@ -89,9 +89,20 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 - [x] `res/buttons/` 的 `arrow.svg`／`chk_check.svg`／`chk_check_disabled.svg`／
       `chk_dash.svg` 與 `res/resources.qrc`（勾選框的打勾圖，女警欄位要用）
 
+**已移植（ui_utils 公版）**
+
+- [x] `ui_utils/ui_common.py`／`table.py`／`widgets.py`／`date_guard.py`（照抄；
+      移除收件人輸入元件、`reportError`（依賴公文的錯誤轉譯）、公文欄位的固定欄寬表）
+- [x] `ui_utils/settings_panels.py`（只留 `_SettingsPanel`／`_save_row` 共用外框，
+      各公文設定面板不搬）
+- [x] `res/resources_rc.py`（由 `pyside6-rcc res/resources.qrc -o res/resources_rc.py` 產生）
+- [x] `conftest.py`（只留日期防呆 fixture）、`tests/date_guard_shim.py`（unittest 由
+      `tests/__init__.py` 安裝）
+- [x] `tests/test_dialog_disabled_style.py`（移除依賴公文彈窗與資料庫的案例，保留公版層檢查）、
+      `tests/test_table_col_widths.py`（照抄）、`tests/test_ui_utils_smoke.py`（新增）
+
 **尚未開始——⚠️ 這些都需要 GUI，容器做不了，要在維護者的機器上進行**
 
-- [ ] `ui_utils/*` 公版元件
 - [ ] `tabs/` 四個分頁與配對彈窗
 - [ ] `lib/print_canvas.py` 與列印三層驗收網
 - [ ] `lib/version.py` ＋ `tools/bump_version.py`
