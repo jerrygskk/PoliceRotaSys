@@ -67,6 +67,26 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 
 ## 五、進度
 
-- [x] `tests/test_no_pii.py`（已移植並裁剪：移除 `gen_shell_db`／`seed_screenshot_data`
+**已完成（皆為自行撰寫，非搬遷）**
+
+- [x] `lib/rota.py` 排班演算法
+- [x] `lib/layout_model.py` 版面模型
+- [x] `lib/db_schema.py`／`db_utils.py`／`db_seed.py` 資料層
+- [x] `lib/ruleset.py` 草稿↔啟用狀態機
+- [x] `lib/plan.py` 月計畫（建立、接續、組版）
+- [x] `export/xlsx_writer.py`／`pdf_writer.py` 兩個 renderer
+- [x] `PITFALLS.md` 起頭
+
+**已移植**
+
+- [x] `tests/test_no_pii.py`（裁剪版：移除 `gen_shell_db`／`seed_screenshot_data`
       等公文專屬檢查，保留 tracked 三來源掃描與 outgoing commit 掃描）
-- [ ] 其餘項目尚未開始
+- [x] `tests/test_environment_contract.py`（改寫：封閉清單改為 PySide6 ＋ openpyxl）
+
+**尚未開始——⚠️ 這些都需要 GUI，容器做不了，要在維護者的機器上進行**
+
+- [ ] `lib/theme.py`、`ui_utils/*` 公版元件
+- [ ] `tabs/` 四個分頁與配對彈窗
+- [ ] `lib/print_canvas.py` 與列印三層驗收網
+- [ ] `lib/version.py` ＋ `tools/bump_version.py`
+- [ ] PyInstaller 打包

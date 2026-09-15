@@ -3,8 +3,9 @@
 警察勤務輪番表產生器。依單位的輪番規則，產生每月每位同仁的番號，
 輸出 **A3 橫式**的 Excel 與 PDF。
 
-> ⚠️ 目前為**設計階段**，尚未有可執行的程式。規則與架構已定案，
-> 見 `CLAUDE.md`（業務規則與協作規範）與 `DEVELOPER.md`（架構與資料庫設計）。
+> ⚠️ **開發中，尚未有可執行的 GUI。** 核心邏輯（排班推算、規則版本、月計畫、
+> xlsx 與 pdf 輸出）已完成並有 178 項測試；畫面的部分還沒開始。
+> 設計文件見 `CLAUDE.md`（業務規則與協作規範）與 `DEVELOPER.md`（架構與資料庫）。
 
 ## 這支程式在做什麼
 
@@ -30,7 +31,18 @@
 
 - Python 3.12 + PySide6 + SQLite
 - runtime 相依為封閉清單：`PySide6`、`openpyxl`
-- push 前必跑：`python -m unittest tests.test_no_pii`
+
+```bash
+pip install -r requirements-dev.txt
+
+# 全套件（PDF 測試需要 offscreen）
+QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -t .
+
+# push 前必跑
+python -m unittest tests.test_no_pii
+```
+
+⚠️ 離線環境跑 PDF 測試前需要 Qt 的系統函式庫，見 `PITFALLS.md` QT-1。
 
 ## 相關
 

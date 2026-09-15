@@ -29,6 +29,7 @@ lib/
   db_seed.py               ★ 種子資料唯一來源
   db_utils.py              連線慣例
   ruleset.py               規則版本讀寫、草稿↔啟用狀態機
+  plan.py                  ★ 月計畫：建立、接續、組版（不含 Qt）
   rota.py                  ★ 排班演算法（純函式，零相依）
   layout_model.py          ★ 版面模型（純資料）
   theme.py                 全域樣式公版
