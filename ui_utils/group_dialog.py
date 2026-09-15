@@ -1,8 +1,8 @@
 """
-group_dialog.py — 番組新增 / 修改彈窗（輪番設定分頁）
+group_dialog.py — 群組新增 / 修改彈窗（輪番設定分頁）
 
 版型照 member_dialog（自 PoliceDocSys 人員設定彈窗搬入）：表單＋右下「取消／儲存」。
-  - 名稱：新增時預帶「番組N」
+  - 名稱：新增時預帶「群組N」
   - 模式：唯讀下拉（輪番／固定／空白欄）。⚠️ 不用可打字 combo（DEVELOPER §4）
   - 範圍：焦點離開即驗語法，錯誤以欄位下方紅字提示，**不跳彈窗**（DEVELOPER §3）
   - 欄寬權重不在這裡：由程式依模式決定（維護者裁示）
@@ -54,7 +54,7 @@ class GroupDialog(QDialog):
         self.is_edit = existing is not None
         self.group_id = existing["group_id"] if self.is_edit else None
         self.reshaped = False
-        self.setWindowTitle("修改番組" if self.is_edit else "新增番組")
+        self.setWindowTitle("修改群組" if self.is_edit else "新增群組")
         self.setMinimumWidth(_LABEL_W + _FIELD_W + _MARGIN)
         self._build()
 
@@ -147,7 +147,7 @@ class GroupDialog(QDialog):
                     "範圍已變更",
                     "模式或範圍已變更，儲存後將重新展開槽位。",
                     confirm_text="儲存", cancel_text="取消",
-                    informative="這個番組已設定的休與改寫代碼將全部清空。",
+                    informative="這個群組已設定的輪休與自訂代碼將全部清空。",
                     parent=self):
                 return
         try:

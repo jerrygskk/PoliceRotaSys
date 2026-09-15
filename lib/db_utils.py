@@ -10,6 +10,8 @@ KEY_UNIT_NAME = "unit_name"
 KEY_OUTPUT_DIR = "output_dir"
 KEY_TITLE_FORMAT = "sheet_title_format"
 KEY_SCHEMA_VERSION = "schema_version"
+# 輪番設定分頁：槽位方塊第二行「N番」從 1 起算（"1"）或照番號（"0"）。只影響畫面。
+KEY_SLOT_NUMBER_FROM_ONE = "slot_number_from_one"
 
 
 def connect(db_path: str) -> sqlite3.Connection:

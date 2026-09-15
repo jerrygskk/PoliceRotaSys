@@ -48,11 +48,11 @@ class MainWindow(QMainWindow):
         self.resize(1440, 780)
 
         self.tabs = QTabWidget()
-        # 分頁順序照使用頻率（DEVELOPER §4）：產生月表／輪番設定／人員／維護
+        # 分頁順序照使用頻率（DEVELOPER §4）：產生月表／輪番設定／人員設定／維護
         self.tab_rules = TabRules(db_path)
         self.tabs.addTab(self.tab_rules, "輪番設定")
         self.tab_personnel = TabPersonnel(db_path)
-        self.tabs.addTab(self.tab_personnel, "人員")
+        self.tabs.addTab(self.tab_personnel, "人員設定")
         self.setCentralWidget(self.tabs)
 
     def closeEvent(self, event):

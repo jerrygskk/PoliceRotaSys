@@ -86,8 +86,8 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 **已移植（續）**
 
 - [x] `lib/theme.py` 全域樣式公版（純字串模組、無 Qt import，容器可安全搬）
-- [x] `res/buttons/` 的 `arrow.svg`／`chk_check.svg`／`chk_check_disabled.svg`／
-      `chk_dash.svg` 與 `res/resources.qrc`（勾選框的打勾圖，女警欄位要用）
+- [x] `res/buttons/` 的 `arrow.svg`／`chk_check.svg`／`chk_check_disabled.svg` 與
+      `res/resources.qrc`（勾選框的打勾圖，女警欄位要用）
 
 **已移植（ui_utils 公版）**
 
@@ -104,7 +104,7 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 **尚未開始——⚠️ 這些都需要 GUI，容器做不了，要在維護者的機器上進行**
 
 - [x] `main.py` 最小主程式＋人員分頁（比照 PoliceDocSys 人員管理搬入）
-- [x] 輪番設定分頁（番組表與人員分頁共用 `ui_utils/sort_table.py` 排序表格公版）
+- [x] 輪番設定分頁（群組表與人員分頁共用 `ui_utils/sort_table.py` 排序表格公版）
 - [ ] `tabs/` 產生月表、維護兩個分頁與配對彈窗
 - [ ] `lib/print_canvas.py` 與列印三層驗收網
 - [x] `lib/version.py` ＋ `tools/bump_version.py`（產品名改為本專案、拿掉獨立版與 README 版號同步；起始 0.1.0）

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""輪番設定分頁與番組彈窗（離線 Qt，暫存資料庫）。"""
+"""輪番設定分頁與群組彈窗（離線 Qt，暫存資料庫）。"""
 import os
 import tempfile
 import unittest
@@ -7,6 +7,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 import main
@@ -42,7 +43,7 @@ class TestGroupDialog(_TempDb):
         dlg = GroupDialog(self.db, self.draft)
         self.addCleanup(dlg.deleteLater)
         dlg.show(); _app.processEvents()
-        self.assertEqual(dlg.w_name.text(), "番組1")
+        self.assertEqual(dlg.w_name.text(), "群組1")
         self.assertIs(_app.focusWidget(), dlg.w_name)
         self.assertEqual(dlg.styleSheet(), "", "彈窗不得自帶 stylesheet（QSS-8）")
 
@@ -63,7 +64,7 @@ class TestGroupDialog(_TempDb):
         dlg.w_expr.setText("40-45")
         dlg._submit()
         rows = self.groups()
-        self.assertEqual(rows[-1]["name"], "番組1")
+        self.assertEqual(rows[-1]["name"], "群組1")
         self.assertEqual(rows[-1]["range_expr"], "40-45")
 
     def test_blank_mode_accepts_labels(self):
@@ -101,9 +102,11 @@ class TestTabRules(_TempDb):
 
     def test_slot_grid_shows_rest_and_click_toggles(self):
         self.tab.tbl_groups.selectRow(0)          # 大輪番，第 6 格是休
-        self.assertIn("休", self.tab.tbl_slots.item(0, 5).text())
-        self.tab._onSlotClicked(0, 5)
-        self.assertNotIn("休", self.tab.tbl_slots.item(0, 5).text())
+        self.assertIn("休", self.tab.slotTiles[5].text())
+        self.assertEqual(self.tab.slotTiles[5].property("state"), "rest")
+        self.tab._onSlotClicked(5)
+        self.assertNotIn("休", self.tab.slotTiles[5].text())
+        self.assertEqual(self.tab.slotTiles[5].property("state"), "work")
 
     def test_reorder_then_save(self):
         first, second = [g["name"] for g in self.groups()[:2]]
@@ -130,7 +133,7 @@ class TestTabRules(_TempDb):
             self.tab._addGroup()
         dlg.assert_not_called()
         self.tab._moveRow(0, 1)
-        self.tab._onSlotClicked(0, 5)
+        self.tab._onSlotClicked(5)
         self.tab.tbl_groups.item(0, tab_rules._SEQ_COL).setText("2")
         self.assertFalse(self.tab.saveSort())
         self.assertEqual([dict(g) for g in self.groups()], before)
@@ -143,7 +146,7 @@ class TestTabRules(_TempDb):
         ask.assert_called_once()
         v = self.tab.currentVersion()
         self.assertEqual(v["status"], ruleset.ACTIVE)
-        self.assertIn("★ 最新", self.tab.list_versions.currentItem().text())
+        self.assertIn("★ 最新", self.tab.list_versions.currentItem().data(Qt.UserRole))
 
     def test_activate_blocked_when_codes_overlap(self):
         with opened(self.db) as conn:
@@ -160,12 +163,70 @@ class TestTabRules(_TempDb):
         with opened(self.db) as conn:
             ruleset.activate(conn, self.draft)
         self.tab.reload(self.draft)
-        with mock.patch.object(tab_rules.QInputDialog, "getText", return_value=("方案二", True)):
+        with mock.patch.object(tab_rules, "askText", return_value=("方案二", True)):
             self.tab._copyDraft()
         v = self.tab.currentVersion()
         self.assertEqual((v["status"], v["draft_name"]), (ruleset.DRAFT, "方案二"))
         self.assertTrue(self.tab._editable())
 
+
+
+class TestSlotNumbering(_TempDb):
+    """方塊第二行「N番」：勾選從 1 起算，不勾照番號；選擇要記住。只影響畫面。"""
+
+    def setUp(self):
+        super().setUp()
+        with opened(self.db) as conn:
+            ruleset.add_group(conn, self.draft, "小輪番", MODE_ROTATE, "30-39")
+        self.tab = TabRules(self.db)
+        self.addCleanup(self.tab.deleteLater)
+        self.tab.tbl_groups.selectRow(len(self.groups()) - 1)
+
+    def test_default_counts_from_one(self):
+        self.assertTrue(self.tab.chk_from_one.isChecked())
+        self.assertEqual(self.tab.slotTiles[0].text(), "30\n1番")
+
+    def test_unchecked_uses_code_and_is_remembered(self):
+        self.tab.chk_from_one.setChecked(False)
+        self.assertEqual(self.tab.slotTiles[0].text(), "30\n30番")
+        again = TabRules(self.db)
+        self.addCleanup(again.deleteLater)
+        self.assertFalse(again.chk_from_one.isChecked())
+
+    def test_blank_group_shows_label_only(self):
+        """空白欄只顯示欄標題；固定番照番號（21 → 21番），兩者都不顯示由 1 起算的勾選框。"""
+        names = [g["name"] for g in self.groups()]
+        self.tab.tbl_groups.selectRow(names.index("班別"))
+        self.assertEqual([t.text() for t in self.tab.slotTiles], ["早", "中", "晚"])
+        self.assertTrue(self.tab.chk_from_one.isHidden())
+        self.tab.tbl_groups.selectRow(names.index("固定番"))
+        self.assertEqual(self.tab.slotTiles[0].text().splitlines(), ["21", "21番"])
+        self.assertTrue(self.tab.chk_from_one.isHidden(), "由 1 起算只作用在輪番類型")
+
+    def test_legend_lists_only_possible_states(self):
+        names = [g["name"] for g in self.groups()]
+        shown = lambda: {s for s, c in self.tab.legend_chips.items() if not c.isHidden()}
+        self.tab.tbl_groups.selectRow(names.index("大輪番"))
+        self.assertEqual(shown(), {"work", "rest", "override"})
+        self.tab.tbl_groups.selectRow(names.index("固定番"))
+        self.assertEqual(shown(), {"work", "override"})
+        self.tab.tbl_groups.selectRow(names.index("班別"))
+        self.assertEqual(shown(), set())
+
+
+class TestTextInputDialog(unittest.TestCase):
+    """公版輸入彈窗：中文按鈕、不自帶樣式、開啟時游標在輸入欄。"""
+
+    def test_template_buttons_and_focus(self):
+        from PySide6.QtWidgets import QPushButton
+        from ui_utils.text_dialog import TextInputDialog
+        dlg = TextInputDialog("自訂代碼", "第 4 格代碼：", "D")
+        self.addCleanup(dlg.deleteLater)
+        dlg.show(); _app.processEvents()
+        self.assertEqual(sorted(b.text() for b in dlg.findChildren(QPushButton)), ["取消", "確定"])
+        self.assertEqual(dlg.styleSheet(), "", "彈窗不得自帶 stylesheet（QSS-8）")
+        self.assertIs(_app.focusWidget(), dlg.w_text)
+        self.assertEqual(dlg.value(), "D")
 
 if __name__ == "__main__":
     unittest.main()
