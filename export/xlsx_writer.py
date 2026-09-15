@@ -15,7 +15,7 @@ from openpyxl.worksheet.page import PageMargins
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-from lib.layout_model import COL_MEMBER, RED, Sheet
+from lib.layout_model import COL_BLANK, COL_MEMBER, COL_TITLE, RED, Sheet
 
 FONT_NAME = "標楷體"
 FONT_SIZE = 12
@@ -32,23 +32,40 @@ TITLE_FONT_SIZE = 18
 #   可列印寬 ≈ 1133pt   可列印高 ≈ 784pt
 # Excel 欄寬換算：pt = (7 × width + 5) × 0.75
 #   日期／星期欄 4.2 → 25.8pt；姓名欄 5.0 → 30.0pt
-#   8 × 25.8 + 31 × 30.0 ≈ 1136pt  （以現行紙本的 39 欄計）
-# 列高：32 + 62 + 20 + 31 × 21 = 765pt
+# 列高同樣按天數分配，31 天與 28 天都要填滿整頁。
 #
 # 人數更多的單位自然會超出，那時才由 fitToPage 接手縮小。
 MARGIN_INCH = 0.4
 
-HEADER_COL_WIDTH = 4.2     # 日期／星期欄
-MEMBER_COL_WIDTH = 5.0     # 姓名欄
-TITLE_ROW_HEIGHT = 32
+# A3 橫式 1190.55 × 841.92 pt，四邊留 0.4 吋（28.8pt）。
+PRINTABLE_W_PT = 1190.55 - 2 * 28.8
+PRINTABLE_H_PT = 841.92 - 2 * 28.8
+
+# ⚠️ **欄寬是按欄數分配的，不是固定值。**
+#
+# 派出所人員會調動，欄數每個月都可能不同。欄寬寫死的話：人多了會超出頁寬、
+# 被 fitToPage 縮到看不清楚；人少了右邊留一大片空白。所以改成把可列印寬度
+# 依權重分給各欄，人多自動變窄、人少自動變寬。
+#
+# 上下限是為了守住可讀性與美觀：
+#   下限 3.0 → 約 19.5pt，兩位數代碼在 12pt 字下的最小可讀寬度
+#   上限 10.0 → 人很少時不要讓格子胖到荒謬（手寫欄位寬一點無妨）
+# 欄數多到連下限都排不下時（約 58 欄），才交給 fitToPage 整張縮。
+MIN_COL_WIDTH = 3.0
+MAX_COL_WIDTH = 10.0
+
+# 欄寬權重：日期／星期欄與標題欄比資料欄寬一點。
+TITLE_COL_WEIGHT = 1.0
+HEADER_COL_WEIGHT = 0.85
+MEMBER_COL_WEIGHT = 1.0
+
 NAME_ROW_HEIGHT = 62       # 姓名直書三個字要放得下
 CODE_ROW_HEIGHT = 20
-ROW_HEIGHT = 21
 
-ROW_TITLE = 1
-ROW_NAME = 2
-ROW_CODE = 3
-ROW_FIRST_DAY = 4
+# ⚠️ 沒有橫向標題列——標題是**最左邊那一整欄直書**（照紙本）。
+ROW_NAME = 1
+ROW_CODE = 2
+ROW_FIRST_DAY = 3
 
 _RED = "FFCC0000"
 _BLACK = "FF000000"
@@ -58,6 +75,49 @@ _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
 _CENTER = Alignment(horizontal="center", vertical="center")
 # 姓名直書（Excel 的 textRotation 255 ＝ 直排）。
 _VERTICAL = Alignment(horizontal="center", vertical="center", textRotation=255)
+
+
+def _width_to_points(width: float) -> float:
+    """Excel 欄寬換算成點。pt = (7 × width + 5) × 0.75。"""
+    return (7 * width + 5) * 0.75
+
+
+def _points_to_width(points: float) -> float:
+    return (points / 0.75 - 5) / 7
+
+
+def _column_weight(kind: str) -> float:
+    if kind == COL_TITLE:
+        return TITLE_COL_WEIGHT
+    if kind in (COL_MEMBER, COL_BLANK):
+        return MEMBER_COL_WEIGHT
+    return HEADER_COL_WEIGHT
+
+
+def column_widths(sheet: Sheet) -> list[float]:
+    """把可列印寬度依權重分給各欄，並夾在上下限之間。"""
+    weights = [_column_weight(column.kind) for column in sheet.columns]
+    per_weight = PRINTABLE_W_PT / sum(weights)
+    return [
+        min(MAX_COL_WIDTH, max(MIN_COL_WIDTH, _points_to_width(per_weight * w)))
+        for w in weights
+    ]
+
+
+def day_row_height(day_count: int) -> float:
+    """日期列高：把剩下的高度分給每一天，讓 28 天的月份也填滿整頁。"""
+    body = PRINTABLE_H_PT - NAME_ROW_HEIGHT - CODE_ROW_HEIGHT
+    return body / day_count
+
+
+def fits_in_one_page(sheet: Sheet) -> bool:
+    """欄數是否還排得下——False 表示要靠 fitToPage 整張縮小。"""
+    return sum(_width_to_points(w) for w in column_widths(sheet)) <= PRINTABLE_W_PT + 1
+
+
+def max_columns_per_page() -> int:
+    """在最小欄寬下，一頁最多放得下幾欄。"""
+    return int(PRINTABLE_W_PT // _width_to_points(MIN_COL_WIDTH))
 
 
 def _argb(color: str) -> str:
@@ -85,21 +145,20 @@ def _setup_page(ws: Worksheet, sheet: Sheet) -> None:
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.print_options.horizontalCentered = True
 
-    for index, column in enumerate(sheet.columns, start=1):
-        ws.column_dimensions[get_column_letter(index)].width = (
-            MEMBER_COL_WIDTH if column.kind == COL_MEMBER else HEADER_COL_WIDTH
-        )
+    for index, width in enumerate(column_widths(sheet), start=1):
+        ws.column_dimensions[get_column_letter(index)].width = width
 
 
-def _write_title(ws: Worksheet, sheet: Sheet, column_count: int) -> None:
-    cell = ws.cell(row=ROW_TITLE, column=1, value=sheet.title)
+def _write_title_column(ws: Worksheet, index: int, sheet: Sheet) -> None:
+    """最左邊那一整欄：直書標題，從姓名列一路合併到最後一天。"""
+    last = ROW_FIRST_DAY - 1 + sheet.day_count
+    cell = ws.cell(row=ROW_NAME, column=index, value=sheet.title)
     cell.font = Font(name=FONT_NAME, size=TITLE_FONT_SIZE, bold=True)
-    cell.alignment = _CENTER
+    cell.alignment = _VERTICAL
+    cell.border = _BORDER
     ws.merge_cells(
-        start_row=ROW_TITLE, start_column=1,
-        end_row=ROW_TITLE, end_column=column_count,
+        start_row=ROW_NAME, start_column=index, end_row=last, end_column=index
     )
-    ws.row_dimensions[ROW_TITLE].height = TITLE_ROW_HEIGHT
 
 
 def _write_column(ws: Worksheet, index: int, column, day_count: int) -> None:
@@ -107,7 +166,11 @@ def _write_column(ws: Worksheet, index: int, column, day_count: int) -> None:
     header.font = Font(
         name=FONT_NAME, size=FONT_SIZE, color=_argb(column.header_color), bold=True
     )
-    header.alignment = _VERTICAL if column.kind == COL_MEMBER else _CENTER
+    # ⚠️ 欄很窄，多字標題橫著放會被切掉（「快打勤務」踩過）——一律直書。
+    vertical = column.kind == COL_MEMBER or (
+        column.kind == COL_BLANK and len(column.header) > 1
+    )
+    header.alignment = _VERTICAL if vertical else _CENTER
     header.border = _BORDER
 
     code = ws.cell(row=ROW_CODE, column=index, value=column.code or None)
@@ -131,18 +194,21 @@ def write_sheet(sheet: Sheet, path: str) -> None:
 
     columns = sheet.columns
     _setup_page(ws, sheet)
-    _write_title(ws, sheet, len(columns))
 
     ws.row_dimensions[ROW_NAME].height = NAME_ROW_HEIGHT
     ws.row_dimensions[ROW_CODE].height = CODE_ROW_HEIGHT
+    row_height = day_row_height(sheet.day_count)
     for day in range(sheet.day_count):
-        ws.row_dimensions[ROW_FIRST_DAY + day].height = ROW_HEIGHT
+        ws.row_dimensions[ROW_FIRST_DAY + day].height = row_height
 
     for index, column in enumerate(columns, start=1):
-        _write_column(ws, index, column, sheet.day_count)
+        if column.kind == COL_TITLE:
+            _write_title_column(ws, index, sheet)
+        else:
+            _write_column(ws, index, column, sheet.day_count)
 
-    # 凍結窗格：捲動時標題列與最左邊的日期欄留在畫面上。
-    ws.freeze_panes = ws.cell(row=ROW_FIRST_DAY, column=3)
+    # 凍結窗格：捲動時姓名列與最左邊的標題／日期欄留在畫面上。
+    ws.freeze_panes = ws.cell(row=ROW_FIRST_DAY, column=4)
     wb.save(path)
 
 

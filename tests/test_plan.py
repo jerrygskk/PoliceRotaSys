@@ -13,6 +13,14 @@ from lib.rota import slot_on_day
 UNIT = "○○分局○○派出所"
 
 
+def block_named(sheet, name):
+    """⚠️ 用名稱找區塊，不要寫死索引——加一個區塊就全錯。"""
+    for block in sheet.blocks:
+        if block.name == name:
+            return block
+    raise AssertionError(f"找不到區塊「{name}」")
+
+
 class _PlanTestCase(unittest.TestCase):
     def setUp(self):
         self._temp = tempfile.TemporaryDirectory(prefix="rota-plan-")
@@ -219,32 +227,50 @@ class TestBuildSheetFor(_PlanTestCase):
         with self.assertRaisesRegex(plan.PlanError, "還沒有月表"):
             plan.build_sheet_for(self.conn, 2026, 10, UNIT)
 
-    def test_sheet_has_a_block_per_group_plus_repeated_headers(self):
+    def test_sheet_has_a_block_per_group(self):
         self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
+        names = [b.name for b in sheet.blocks if b.name]
         self.assertEqual(
-            [b.is_header for b in sheet.blocks],
-            [True, False, True, False, True, False, True],
+            names,
+            ["大輪番", "固定番", "同仁專案臨檢／請假", "幹部", "快打勤務"],
         )
+
+    def test_blank_groups_need_no_pairing_and_render_empty(self):
+        """⚠️ 空白欄不配人，格子全空供手寫。"""
+        self.make_plan()
+        sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
+        block = block_named(sheet, "同仁專案臨檢／請假")
+        self.assertEqual([c.header for c in block.columns], ["早", "中", "晚"])
+        for column in block.columns:
+            self.assertTrue(all(cell.text == "" for cell in column.cells))
+
+    def test_header_placement_follows_the_group_setting(self):
+        """幹部與快打勤務左邊不再放日期欄，照現行紙本。"""
+        self.make_plan()
+        sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
+        kinds = [b.columns[0].kind for b in sheet.blocks]
+        self.assertEqual(kinds[0], "title")
+        self.assertEqual(kinds.count("date"), 4)
 
     def test_rotate_block_is_filled(self):
         self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
-        column = sheet.blocks[1].columns[0]
+        column = block_named(sheet, "大輪番").columns[0]
         self.assertTrue(any(cell.text for cell in column.cells))
 
     def test_fixed_block_is_blank_but_carries_the_code(self):
         """⚠️ 固定番區留白供手填，只印姓名與代碼。"""
         self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
-        column = sheet.blocks[3].columns[0]
+        column = block_named(sheet, "固定番").columns[0]
         self.assertEqual(column.code, "21")
         self.assertTrue(all(cell.text == "" for cell in column.cells))
 
     def test_member_names_come_from_the_member_table(self):
         self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
-        self.assertEqual(sheet.blocks[1].columns[0].header, db_seed.SEED_MEMBERS[0])
+        self.assertEqual(block_named(sheet, "大輪番").columns[0].header, db_seed.SEED_MEMBERS[0])
 
     def test_title_uses_the_unit_name_setting(self):
         self.make_plan()
@@ -254,7 +280,7 @@ class TestBuildSheetFor(_PlanTestCase):
     def test_sheet_matches_the_paper_row_for_a_seed_of_12(self):
         self.make_plan(seeds=self.full_seeds(rotate_start=12))
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
-        column = sheet.blocks[1].columns[0]
+        column = block_named(sheet, "大輪番").columns[0]
         self.assertEqual(
             [c.text for c in column.cells[:10]],
             ["12", "00", "00", "15", "16", "17", "18", "00", "00", "01"],

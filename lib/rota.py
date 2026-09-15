@@ -155,13 +155,40 @@ def build_slots(codes: tuple[str, ...], rest_seqs: set[int] = frozenset()) -> tu
     )
 
 
+MODE_ROTATE = "rotate"
+MODE_FIXED = "fixed"
+MODE_BLANK = "blank"
+MODES = (MODE_ROTATE, MODE_FIXED, MODE_BLANK)
+
+
+def blank_labels(expr: str) -> tuple[str, ...]:
+    """``blank`` 番組的欄標題：逗號分隔的字面文字，不是範圍式。
+
+    紙本上「同仁專案臨檢／請假」的早／中／晚、以及「快打勤務」都屬於這類——
+    有欄標題、有格線，但**格子全空供手寫**，不配人也不算番號。
+    """
+    labels = tuple(part.strip() for part in expr.split(",") if part.strip())
+    if not labels:
+        raise RangeError("空白欄至少要有一個欄標題")
+    return labels
+
+
 def make_group(
     name: str, mode: str, expr: str, rest_seqs: set[int] = frozenset()
 ) -> Group:
-    if mode not in ("rotate", "fixed"):
+    if mode not in MODES:
         raise ValueError(f"未知的模式：{mode}")
-    if mode == "fixed" and rest_seqs:
-        raise ValueError("固定番沒有輪休格位")
+    if mode != MODE_ROTATE and rest_seqs:
+        raise ValueError(f"{mode} 番組沒有輪休格位")
+    if mode == MODE_BLANK:
+        return Group(
+            name=name,
+            mode=mode,
+            slots=tuple(
+                Slot(seq=i, code=label, is_rest=False)
+                for i, label in enumerate(blank_labels(expr), start=1)
+            ),
+        )
     return Group(name=name, mode=mode, slots=build_slots(expand_range(expr), rest_seqs))
 
 
@@ -184,8 +211,11 @@ def validate_groups(groups: list[Group]) -> None:
     for group in groups:
         if not group.slots:
             raise GroupError(f"「{group.name}」的範圍是空的")
-        if group.mode == "rotate" and all(s.is_rest for s in group.slots):
+        if group.mode == MODE_ROTATE and all(s.is_rest for s in group.slots):
             raise GroupError(f"「{group.name}」每一格都是休，沒有人會上班")
+        if group.mode == MODE_BLANK:
+            # 空白欄的標題不是番號，不參與撞號檢查。
+            continue
         for slot in group.slots:
             owner = seen.get(slot.code)
             if owner is not None:
@@ -208,7 +238,7 @@ def slot_on_day(group: Group, seed_seq: int, day: int) -> Slot:
         raise ValueError(f"起始格位 {seed_seq} 超出範圍（共 {group.cycle_len} 格）")
     if day < 1:
         raise ValueError("日期從 1 起算")
-    if group.mode == "fixed":
+    if group.mode != MODE_ROTATE:
         return group.slots[seed_seq - 1]
     index = (seed_seq - 1 + (day - 1)) % group.cycle_len
     return group.slots[index]
@@ -244,7 +274,7 @@ def chain_seeds(
 
     固定番不隨日期前進，格位原樣沿用。
     """
-    if group.mode == "fixed":
+    if group.mode != MODE_ROTATE:
         return dict(seeds)
     return {
         who: (seed - 1 + prev_month_days) % group.cycle_len + 1

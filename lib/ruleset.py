@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
-from lib.rota import Group, Slot, expand_range
+from lib.rota import MODE_BLANK, Group, Slot, blank_labels, expand_range
 
 DRAFT = "草稿"
 ACTIVE = "啟用"
@@ -102,11 +102,11 @@ def copy_to_draft(
     ).fetchall():
         cur = conn.execute(
             "INSERT INTO RV_Group"
-            "(version_id, name, mode, range_expr, rest_code, sort_order) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(version_id, name, mode, range_expr, rest_code, header_before, "
+            "sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 new_id, group["name"], group["mode"], group["range_expr"],
-                group["rest_code"], group["sort_order"],
+                group["rest_code"], group["header_before"], group["sort_order"],
             ),
         )
         new_group_id = cur.lastrowid
@@ -190,7 +190,11 @@ def load_groups(conn: sqlite3.Connection, version_id: int) -> list[Group]:
         "SELECT * FROM RV_Group WHERE version_id = ? ORDER BY sort_order, group_id",
         (version_id,),
     ).fetchall():
-        codes = expand_range(grow["range_expr"])
+        codes = (
+            blank_labels(grow["range_expr"])
+            if grow["mode"] == MODE_BLANK
+            else expand_range(grow["range_expr"])
+        )
         slots = []
         for srow in conn.execute(
             "SELECT * FROM RV_Slot WHERE group_id = ? ORDER BY seq",

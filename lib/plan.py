@@ -15,7 +15,7 @@ from datetime import datetime
 
 from lib import ruleset
 from lib.layout_model import Entry, Section, Sheet, build_sheet
-from lib.rota import Group, month_days, rota_month
+from lib.rota import MODE_BLANK, MODE_ROTATE, Group, month_days, rota_month
 
 ORIGIN_CHAIN = "chain"
 ORIGIN_RESET = "reset"
@@ -209,6 +209,8 @@ def _assert_seeds_complete(
                 )
 
     for group_id, row in groups.items():
+        if row["mode"] == MODE_BLANK:
+            continue          # 空白欄不配人
         cycle_len = loaded[row["name"]].cycle_len
         taken = set(seeds.get(group_id, {}).values())
         missing = sorted(set(range(1, cycle_len + 1)) - taken)
@@ -254,10 +256,22 @@ def build_sheet_for(
     }
 
     sections: list[Section] = []
+    blank_names: set[str] = set()
     for row in _group_rows(conn, version_id):
         group = loaded[row["name"]]
         members = seeds.get(row["group_id"], {})
-        if group.mode == "rotate":
+        if group.mode == MODE_BLANK:
+            # 有欄標題、有格線，格子全空供手寫。
+            sections.append(
+                Section(
+                    name=row["name"],
+                    entries=tuple(Entry(name=slot.code) for slot in group.slots),
+                    header_before=bool(row["header_before"]),
+                )
+            )
+            blank_names.add(row["name"])
+            continue
+        if group.mode == MODE_ROTATE:
             computed = rota_month(
                 group,
                 {str(member_id): seq for member_id, seq in members.items()},
@@ -276,6 +290,14 @@ def build_sheet_for(
                 )
                 for member_id, seq in members.items()
             )
-        sections.append(Section(name=row["name"], entries=entries))
+        sections.append(
+            Section(
+                name=row["name"],
+                entries=entries,
+                header_before=bool(row["header_before"]),
+            )
+        )
 
-    return build_sheet(unit_name, year, month, sections)
+    return build_sheet(
+        unit_name, year, month, sections, blank_sections=frozenset(blank_names)
+    )

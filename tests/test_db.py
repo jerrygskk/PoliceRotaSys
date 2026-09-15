@@ -235,7 +235,9 @@ class TestSeed(_DbTestCase):
             [tuple(r) for r in rows],
             [("大輪番", "rotate", "1-20"),
              ("固定番", "fixed", "21-28"),
-             ("幹部", "fixed", "A-F")],
+             ("同仁專案臨檢／請假", "blank", "早,中,晚"),
+             ("幹部", "fixed", "A-F"),
+             ("快打勤務", "blank", "快打勤務")],
         )
 
     def test_seed_rest_positions_match_the_paper_form(self):
@@ -250,9 +252,11 @@ class TestSeed(_DbTestCase):
     def test_template_has_exactly_enough_people_for_the_default_rules(self):
         """⚠️ 模板若配不滿自己的預設規則，第一次開起來就會產出有空欄的月表，
         承辦人會以為程式壞了。改 SEED_GROUPS 時要回頭核對這個數字。"""
-        from lib.rota import expand_range
-
-        total = sum(len(expand_range(expr)) for _, _, expr, _ in db_seed.SEED_GROUPS)
+        total = sum(
+            db_seed._slot_count(mode, expr)
+            for _, mode, expr, _, _ in db_seed.SEED_GROUPS
+            if mode != "blank"          # 空白欄不配人
+        )
         self.assertEqual(len(db_seed.SEED_MEMBERS), total)
 
     def test_template_has_no_duplicate_names(self):

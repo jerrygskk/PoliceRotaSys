@@ -161,9 +161,19 @@ class TestLatestActive(_RulesetTestCase):
 class TestLoadGroups(_RulesetTestCase):
     def test_groups_match_the_paper_form(self):
         groups = ruleset.load_groups(self.conn, self.draft)
-        self.assertEqual([g.name for g in groups], ["大輪番", "固定番", "幹部"])
+        self.assertEqual(
+            [g.name for g in groups],
+            ["大輪番", "固定番", "同仁專案臨檢／請假", "幹部", "快打勤務"],
+        )
         self.assertEqual(groups[0].cycle_len, 20)
-        self.assertEqual(groups[2].slots[0].code, "A")
+        self.assertEqual(groups[3].slots[0].code, "A")
+
+    def test_blank_group_columns_come_from_literal_labels(self):
+        """⚠️ blank 模式的 range_expr 是字面欄標題，不是範圍式。"""
+        groups = ruleset.load_groups(self.conn, self.draft)
+        blank = next(g for g in groups if g.name == "同仁專案臨檢／請假")
+        self.assertEqual([s.code for s in blank.slots], ["早", "中", "晚"])
+        self.assertTrue(all(not s.is_rest for s in blank.slots))
 
     def test_loaded_group_reproduces_the_paper_row(self):
         """從資料庫載入的規則，推出來的結果必須與紙本相同。"""

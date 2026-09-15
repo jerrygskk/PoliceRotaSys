@@ -40,6 +40,15 @@
   `pdf_writer._draw_vertical`（逐字畫）；xlsx 用 `textRotation=255`（Excel 的
   直排值，不是 90）。
 
+- **LAY-5**: **欄寬／列高寫死，人一調動版面就爛** → 派出所人員會調動，欄數
+  每個月都可能不同。寫死的話人多了超出頁寬、被 fitToPage 縮到看不清楚，人少
+  了右邊留一大片空白（28 天的月份同理，下面會空 3 天的高度）。正解：**把可
+  列印寬高依權重分給各欄各列**，並夾在可讀性上下限之間；欄數多到連下限都排
+  不下時才交給 fitToPage。容量以 `xlsx_writer.max_columns_per_page()` 查得，
+  目前約 58 欄。回歸測試 `tests/test_export.py::TestAdaptiveWidth`。
+- **LAY-6**: **窄欄裡的多字標題被切掉** → 「快打勤務」四個字橫排塞在資料欄
+  寬裡必定切字。欄標題**只要超過一個字就直書**（姓名本來就是）。
+
 #### XLS：openpyxl
 
 - **XLS-1**: **`page_setup.paperSize` 拿常數比對得到 `8 != '8'` 的假失敗**

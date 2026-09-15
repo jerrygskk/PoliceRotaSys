@@ -23,7 +23,7 @@ from PySide6.QtGui import (
     QPdfWriter,
 )
 
-from lib.layout_model import COL_MEMBER, RED, Sheet
+from lib.layout_model import COL_BLANK, COL_MEMBER, COL_TITLE, RED, Sheet
 
 RESOLUTION = 300          # dpi
 MARGIN_MM = 8.0
@@ -38,18 +38,17 @@ MARGIN_MM = 8.0
 # 300dpi 的繪圖裝置，用像素才算得準格子塞不塞得下。
 BODY_HEIGHT_RATIO = 0.58   # 字高佔格高的比例
 BODY_WIDTH_RATIO = 0.42    # 兩字寬的代碼要塞進格寬
-TITLE_HEIGHT_RATIO = 0.55
 
 # 字型：標楷體優先，找不到時依序退回。
 # ⚠️ 不要只寫一支——沒有那支字型時 Qt 會靜默換成系統預設，字寬全走鐘。
 FONT_FAMILIES = ("標楷體", "DFKai-SB", "Microsoft JhengHei", "Noto Sans CJK TC")
 
 # 欄寬權重：日期／星期欄比姓名欄寬一點。
+TITLE_COL_WEIGHT = 1.1
 HEADER_COL_WEIGHT = 1.25
 MEMBER_COL_WEIGHT = 1.0
 
-# 標題列與姓名列佔整頁高度的比例。
-TITLE_RATIO = 0.055
+# ⚠️ 沒有橫向標題列——標題是最左邊那一整欄直書（照紙本）。
 NAME_RATIO = 0.085
 CODE_RATIO = 0.028
 
@@ -97,47 +96,53 @@ def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
     if not columns:
         return
 
-    title_h = page.height() * TITLE_RATIO
     name_h = page.height() * NAME_RATIO
     code_h = page.height() * CODE_RATIO
-    body_h = page.height() - title_h - name_h - code_h
+    body_h = page.height() - name_h - code_h
     row_h = body_h / sheet.day_count
 
-    weights = [
-        HEADER_COL_WEIGHT if column.kind != COL_MEMBER else MEMBER_COL_WEIGHT
-        for column in columns
-    ]
-    unit_w = page.width() / sum(weights)
+    def weight_of(column) -> float:
+        if column.kind == COL_TITLE:
+            return TITLE_COL_WEIGHT
+        if column.kind in (COL_MEMBER, COL_BLANK):
+            return MEMBER_COL_WEIGHT
+        return HEADER_COL_WEIGHT
 
-    painter.setFont(_font(title_h * TITLE_HEIGHT_RATIO, bold=True))
-    painter.setPen(QColor("#000000"))
-    painter.drawText(
-        QRectF(page.left(), page.top(), page.width(), title_h),
-        Qt.AlignCenter,
-        sheet.title,
-    )
+    weights = [weight_of(column) for column in columns]
+    unit_w = page.width() / sum(weights)
 
     # 代碼格最窄的一欄決定字級，整張表才會一致。
     narrowest = unit_w * min(weights)
     body_px = min(row_h * BODY_HEIGHT_RATIO, narrowest * BODY_WIDTH_RATIO)
-    painter.setFont(_font(body_px))
 
     x = page.left()
     for column, weight in zip(columns, weights):
         width = unit_w * weight
-        header_rect = QRectF(x, page.top() + title_h, width, name_h)
-        if column.kind == COL_MEMBER:
+        if column.kind == COL_TITLE:
+            _paint_title_column(
+                painter, QRectF(x, page.top(), width, page.height()),
+                sheet.title, body_px,
+            )
+            x += width
+            continue
+
+        painter.setFont(_font(body_px))
+        header_rect = QRectF(x, page.top(), width, name_h)
+        # ⚠️ 欄很窄，多字標題橫著放會被切掉（「快打勤務」踩過）——一律直書。
+        if column.kind == COL_MEMBER or (
+            column.kind == COL_BLANK and len(column.header) > 1
+        ):
             _paint_vertical_header(painter, header_rect, column, body_px, width)
         else:
             _paint_cell(painter, header_rect, column.header, column.header_color)
         painter.setFont(_font(body_px))
         _paint_cell(
             painter,
-            QRectF(x, page.top() + title_h + name_h, width, code_h),
+            QRectF(x, page.top() + name_h, width, code_h),
             column.code,
             "black",
         )
-        top = page.top() + title_h + name_h + code_h
+        top = page.top() + name_h + code_h
         for day, cell in enumerate(column.cells):
             _paint_cell(
                 painter,
@@ -146,6 +151,27 @@ def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
                 cell.color,
             )
         x += width
+
+
+def _paint_title_column(
+    painter: QPainter, rect: QRectF, title: str, body_px: float
+) -> None:
+    """最左邊那一整欄：直書標題，跨全高。"""
+    painter.setPen(QColor("#000000"))
+    painter.drawRect(rect)
+    if not title:
+        return
+    per_char = min(rect.width() * 0.8, rect.height() / max(1, len(title)))
+    painter.setFont(_font(min(body_px * 1.3, per_char * 0.9), bold=True))
+    metrics = painter.fontMetrics()
+    line_h = max(metrics.height(), per_char * 0.95)
+    top = rect.top() + max(0.0, (rect.height() - line_h * len(title)) / 2)
+    for index, char in enumerate(title):
+        painter.drawText(
+            QRectF(rect.left(), top + index * line_h, rect.width(), line_h),
+            Qt.AlignCenter,
+            char,
+        )
 
 
 def _paint_cell(painter: QPainter, rect: QRectF, text: str, color: str) -> None:

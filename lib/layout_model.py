@@ -12,7 +12,7 @@
     掃描件上看起來像橫的東西，在原始 Excel 裡是直的。改之前先確認軸向。
 
 版面照現行紙本：
-  - A3 橫式單頁，標題橫置於頁首
+  - A3 橫式單頁，⚠️ **標題在最左邊一整欄直書**（跨全高），不是橫置於頁首
   - 三個區塊**左右並排**，⚠️ 日期／星期欄在每個區塊之間重複
   - 只有輪番區由程式填滿；固定番與休假打勤務兩區留白供手填
   - 休與週六日印紅色
@@ -31,9 +31,11 @@ WEEKDAY_LABELS = ("一", "二", "三", "四", "五", "六", "日")
 SATURDAY = 5
 SUNDAY = 6
 
+COL_TITLE = "title"
 COL_DATE = "date"
 COL_WEEKDAY = "weekday"
 COL_MEMBER = "member"
+COL_BLANK = "blank"
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,8 @@ class Entry:
 class Section:
     name: str
     entries: tuple[Entry, ...] = field(default_factory=tuple)
+    # 這個區塊左邊要不要再放一次日期／星期欄。現行紙本不是每個區塊都有。
+    header_before: bool = True
 
 
 def roc_year(year: int) -> int:
@@ -142,6 +146,15 @@ def weekday_column(year: int, month: int, day_count: int) -> Column:
     )
 
 
+def title_column(title: str, day_count: int) -> Column:
+    """最左邊那一整欄：直書標題，跨全高。"""
+    return Column(
+        kind=COL_TITLE,
+        header=title,
+        cells=tuple(Cell() for _ in range(day_count)),
+    )
+
+
 def _header_block(year: int, month: int, day_count: int) -> Block:
     return Block(
         name="",
@@ -152,7 +165,9 @@ def _header_block(year: int, month: int, day_count: int) -> Block:
     )
 
 
-def _member_column(entry: Entry, day_count: int, rest_code: str) -> Column:
+def _member_column(
+    entry: Entry, day_count: int, rest_code: str, kind: str = COL_MEMBER
+) -> Column:
     if entry.slots is None:
         cells = tuple(Cell() for _ in range(day_count))
     else:
@@ -165,9 +180,7 @@ def _member_column(entry: Entry, day_count: int, rest_code: str) -> Column:
             Cell(rest_code, RED) if slot.is_rest else Cell(slot.code, BLACK)
             for slot in entry.slots
         )
-    return Column(
-        kind=COL_MEMBER, header=entry.name, code=entry.code, cells=cells
-    )
+    return Column(kind=kind, header=entry.name, code=entry.code, cells=cells)
 
 
 def build_sheet(
@@ -176,6 +189,7 @@ def build_sheet(
     month: int,
     sections: list[Section],
     rest_code: str = "00",
+    blank_sections: frozenset[str] = frozenset(),
 ) -> Sheet:
     """組出整張表。``year`` 為**西元**，標題自動轉民國。
 
@@ -186,21 +200,28 @@ def build_sheet(
         raise ValueError("至少要有一個區塊")
     day_count = calendar.monthrange(year, month)[1]
 
-    blocks: list[Block] = [_header_block(year, month, day_count)]
+    title = sheet_title(unit_name, year, month)
+    blocks: list[Block] = [
+        Block(name="", columns=(title_column(title, day_count),)),
+    ]
     for section in sections:
+        if section.header_before:
+            blocks.append(_header_block(year, month, day_count))
+        kind = COL_BLANK if section.name in blank_sections else COL_MEMBER
         blocks.append(
             Block(
                 name=section.name,
                 columns=tuple(
-                    _member_column(entry, day_count, rest_code)
+                    _member_column(entry, day_count, rest_code, kind)
                     for entry in section.entries
                 ),
             )
         )
-        blocks.append(_header_block(year, month, day_count))
+    # 最右邊一定再放一次，紙本如此。
+    blocks.append(_header_block(year, month, day_count))
 
     return Sheet(
-        title=sheet_title(unit_name, year, month),
+        title=title,
         year=year,
         month=month,
         day_count=day_count,

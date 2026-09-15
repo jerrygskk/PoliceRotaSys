@@ -15,7 +15,7 @@ import sqlite3
 from datetime import datetime
 
 from lib.db_utils import KEY_OUTPUT_DIR, KEY_UNIT_NAME
-from lib.rota import expand_range
+from lib.rota import MODE_BLANK, blank_labels, expand_range
 
 # ⚠️ 全部是虛構姓名，不得替換成真實同仁。
 #
@@ -35,12 +35,18 @@ SEED_MEMBERS = (
     "孫振宇", "高淑貞", "范文傑", "石雅芬", "尤建德", "溫柏翰",
 )
 
-# 預設草稿：照現行紙本的三個番組（DEVELOPER §8）。
+# 預設草稿：照現行紙本的區塊順序（DEVELOPER §8）。
+#
+# ⚠️ blank 模式的 range_expr 是**逗號分隔的字面欄標題**，不是範圍式。
+# 那幾欄有標題有格線但格子全空，供承辦人手寫（紙本上是「休」「補」
+# 「通補」那些），不配人也不算番號。
 SEED_GROUPS = (
-    # (名稱, 模式, 範圍式, 休假格位)
-    ("大輪番", "rotate", "1-20", (6, 7, 13, 14, 19, 20)),
-    ("固定番", "fixed", "21-28", ()),
-    ("幹部", "fixed", "A-F", ()),
+    # (名稱, 模式, 範圍式／欄標題, 休假格位, 左邊要不要再放日期／星期欄)
+    ("大輪番", "rotate", "1-20", (6, 7, 13, 14, 19, 20), True),
+    ("固定番", "fixed", "21-28", (), True),
+    ("同仁專案臨檢／請假", "blank", "早,中,晚", (), True),
+    ("幹部", "fixed", "A-F", (), False),
+    ("快打勤務", "blank", "快打勤務", (), False),
 )
 
 DEFAULT_SETTINGS = {
@@ -78,6 +84,11 @@ def _seed_members(conn: sqlite3.Connection) -> None:
     )
 
 
+def _slot_count(mode: str, expr: str) -> int:
+    """⚠️ blank 模式的 expr 是字面欄標題，不能餵給 expand_range。"""
+    return len(blank_labels(expr) if mode == MODE_BLANK else expand_range(expr))
+
+
 def _seed_draft(conn: sqlite3.Connection, ruleset_name: str) -> None:
     if conn.execute("SELECT 1 FROM Ruleset_Version LIMIT 1").fetchone():
         return
@@ -93,12 +104,12 @@ def _seed_draft(conn: sqlite3.Connection, ruleset_name: str) -> None:
     )
     version_id = cur.lastrowid
 
-    for order, (name, mode, expr, rests) in enumerate(SEED_GROUPS, start=1):
+    for order, (name, mode, expr, rests, header) in enumerate(SEED_GROUPS, start=1):
         cur = conn.execute(
             "INSERT INTO RV_Group"
-            "(version_id, name, mode, range_expr, rest_code, sort_order) "
-            "VALUES (?, ?, ?, ?, '00', ?)",
-            (version_id, name, mode, expr, order),
+            "(version_id, name, mode, range_expr, rest_code, header_before, "
+            "sort_order) VALUES (?, ?, ?, ?, '00', ?, ?)",
+            (version_id, name, mode, expr, 1 if header else 0, order),
         )
         group_id = cur.lastrowid
         rest_set = set(rests)
@@ -107,6 +118,6 @@ def _seed_draft(conn: sqlite3.Connection, ruleset_name: str) -> None:
             "VALUES (?, ?, ?, ?, NULL)",
             [
                 (version_id, group_id, seq, 1 if seq in rest_set else 0)
-                for seq in range(1, len(expand_range(expr)) + 1)
+                for seq in range(1, _slot_count(mode, expr) + 1)
             ],
         )
