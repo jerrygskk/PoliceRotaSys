@@ -254,12 +254,65 @@ class TestAdaptiveWidth(unittest.TestCase):
             xlsx_writer.day_row_height(28), xlsx_writer.day_row_height(31)
         )
         for days in (28, 29, 30, 31):
+            name_h = xlsx_writer.MIN_NAME_ROW_HEIGHT
             total = (
-                xlsx_writer.NAME_ROW_HEIGHT
+                name_h
                 + xlsx_writer.CODE_ROW_HEIGHT
-                + xlsx_writer.day_row_height(days) * days
+                + xlsx_writer.day_row_height(days, name_h) * days
             )
             self.assertAlmostEqual(total, xlsx_writer.PRINTABLE_H_PT, delta=1)
+
+
+class TestNameRowHeight(unittest.TestCase):
+    """⚠️ Excel 放不下就是切掉，而且不會有任何警告。
+
+    第一版把姓名列寫死 62pt：三個字的姓名剛好，但「同仁專案臨檢」六個字直書
+    被切掉、跨欄註記四行只顯示得出兩行（後兩行整個不見）。這幾支釘住「高度
+    依實際內容算」。
+    """
+
+    def sheet_with_header(self, header: str):
+        return build_sheet(
+            UNIT, 2026, 10,
+            [Section(header, (Entry(header),), header_before=False)],
+            blank_sections=frozenset({header}),
+        )
+
+    def test_a_longer_vertical_header_needs_a_taller_row(self):
+        short = xlsx_writer.name_row_height(self.sheet_with_header("快打"))
+        long = xlsx_writer.name_row_height(self.sheet_with_header("同仁專案臨檢"))
+        self.assertGreater(long, short)
+
+    def test_six_character_header_fits_in_name_plus_code_rows(self):
+        sheet = self.sheet_with_header("同仁專案臨檢")
+        available = (
+            xlsx_writer.name_row_height(sheet) + xlsx_writer.CODE_ROW_HEIGHT
+        )
+        needed = 6 * xlsx_writer.FONT_SIZE * xlsx_writer.VERTICAL_LINE_RATIO
+        self.assertGreaterEqual(available, needed)
+
+    def test_a_four_line_note_fits(self):
+        from lib.layout_model import NoteLine
+
+        note = tuple(NoteLine(f"第 {i} 行") for i in range(4))
+        sheet = build_sheet(
+            UNIT, 2026, 10,
+            [Section("班別", (Entry("早"), Entry("中"), Entry("晚")),
+                     header_before=False, note=note)],
+            blank_sections=frozenset({"班別"}),
+        )
+        needed = 4 * xlsx_writer.NOTE_FONT_SIZE * xlsx_writer.NOTE_LINE_RATIO
+        self.assertGreaterEqual(xlsx_writer.name_row_height(sheet), needed)
+
+    def test_the_page_height_is_still_filled_after_growing_the_name_row(self):
+        sheet = self.sheet_with_header("同仁專案臨檢")
+        name_h = xlsx_writer.name_row_height(sheet)
+        total = (
+            name_h
+            + xlsx_writer.CODE_ROW_HEIGHT
+            + xlsx_writer.day_row_height(sheet.day_count, name_h) * sheet.day_count
+        )
+        self.assertAlmostEqual(total, xlsx_writer.PRINTABLE_H_PT, delta=1)
 
 
 @unittest.skipUnless(HAS_QT, "需要 PySide6（離線請設 QT_QPA_PLATFORM=offscreen）")

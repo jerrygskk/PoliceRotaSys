@@ -67,7 +67,18 @@ TITLE_COL_WEIGHT = 1.0
 HEADER_COL_WEIGHT = 0.85
 MEMBER_COL_WEIGHT = 1.0
 
-NAME_ROW_HEIGHT = 62       # 姓名直書三個字要放得下
+# ⚠️ **姓名列高度是算出來的，不能寫死。**
+#
+# 第一版寫死 62pt：三個字的姓名剛好，但「同仁專案臨檢」六個字直書就被切掉，
+# 跨欄註記四行也只顯示得出兩行（「中班(17.18)」「限填1人」整個不見）。
+# Excel 不會自動縮字，放不下就是切掉，而且**不會有任何警告**。
+#
+# 所以改成依實際內容算：取「最長的直書標題」與「註記行數」兩者所需高度的
+# 較大者。
+MIN_NAME_ROW_HEIGHT = 62
+VERTICAL_LINE_RATIO = 1.35   # 直書一個字佔的高度 ÷ 字級
+NOTE_FONT_SIZE = 9           # 註記字小一級，四行才排得下
+NOTE_LINE_RATIO = 1.45
 CODE_ROW_HEIGHT = 20
 
 # ⚠️ 沒有橫向標題列——標題是**最左邊那一整欄直書**（照紙本）。
@@ -85,6 +96,28 @@ _CENTER = Alignment(horizontal="center", vertical="center")
 # 姓名直書（Excel 的 textRotation 255 ＝ 直排）。
 _VERTICAL = Alignment(horizontal="center", vertical="center", textRotation=255)
 _NOTE = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+
+def name_row_height(sheet: Sheet) -> float:
+    """姓名列要多高才放得下最長的直書標題與最多行的註記。"""
+    longest = 0
+    for column in sheet.columns:
+        if column.kind != COL_TITLE and len(column.header) > 1:
+            longest = max(longest, len(column.header))
+    needed_header = longest * FONT_SIZE * VERTICAL_LINE_RATIO
+    # 沒有小標題的空白欄，標題跨姓名列與代碼列，所以可用高度多了一列。
+    needed_header -= CODE_ROW_HEIGHT if _has_spanning_header(sheet) else 0
+
+    most_lines = max((len(b.note) for b in sheet.blocks), default=0)
+    needed_note = most_lines * NOTE_FONT_SIZE * NOTE_LINE_RATIO
+
+    return max(MIN_NAME_ROW_HEIGHT, needed_header, needed_note)
+
+
+def _has_spanning_header(sheet: Sheet) -> bool:
+    return any(
+        column.kind == COL_BLANK and not column.code for column in sheet.columns
+    )
 
 
 def _width_to_points(width: float) -> float:
@@ -114,9 +147,9 @@ def column_widths(sheet: Sheet) -> list[float]:
     ]
 
 
-def day_row_height(day_count: int) -> float:
+def day_row_height(day_count: int, name_height: float = MIN_NAME_ROW_HEIGHT) -> float:
     """日期列高：把剩下的高度分給每一天，讓 28 天的月份也填滿整頁。"""
-    body = PRINTABLE_H_PT - NAME_ROW_HEIGHT - CODE_ROW_HEIGHT
+    body = PRINTABLE_H_PT - name_height - CODE_ROW_HEIGHT
     return body / day_count
 
 
@@ -179,7 +212,9 @@ def _write_note(ws: Worksheet, first: int, block: Block) -> None:
         text = line.text if i == len(block.note) - 1 else line.text + "\n"
         parts.append(
             TextBlock(
-                InlineFont(rFont=FONT_NAME, sz=FONT_SIZE, color=_argb(line.color)),
+                InlineFont(
+                    rFont=FONT_NAME, sz=NOTE_FONT_SIZE, color=_argb(line.color)
+                ),
                 text,
             )
         )
@@ -256,9 +291,10 @@ def write_sheet(sheet: Sheet, path: str) -> None:
     columns = sheet.columns
     _setup_page(ws, sheet)
 
-    ws.row_dimensions[ROW_NAME].height = NAME_ROW_HEIGHT
+    name_height = name_row_height(sheet)
+    ws.row_dimensions[ROW_NAME].height = name_height
     ws.row_dimensions[ROW_CODE].height = CODE_ROW_HEIGHT
-    row_height = day_row_height(sheet.day_count)
+    row_height = day_row_height(sheet.day_count, name_height)
     for day in range(sheet.day_count):
         ws.row_dimensions[ROW_FIRST_DAY + day].height = row_height
 
