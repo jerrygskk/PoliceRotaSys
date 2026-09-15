@@ -207,10 +207,25 @@ def _setup_page(ws: Worksheet, sheet: Sheet) -> None:
     )
     ws.page_setup.paperSize = ws.PAPERSIZE_A3
     ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 1
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.print_options.horizontalCentered = True
+
+    # ⚠️ **放得下就固定 100%，不要交給 fitToPage。**
+    #
+    # 「調整成 1 頁寬 1 頁高」在算頁面分割時比實際保守：現場實測，表格自然
+    # 尺寸 410 × 287mm、可列印區也是 410 × 287mm，關掉 fitToPage 用 100%
+    # 印出來是紮紮實實的 1/1，但開著 fitToPage 它仍然縮了一級——上下貼滿、
+    # **左右白掉一大片**。維護者回報「左右留的空間有點多」就是這個。
+    #
+    # 欄數真的超出容量時才讓它接手，那時縮小是應該的。
+    if fits_in_one_page(sheet):
+        ws.sheet_properties.pageSetUpPr.fitToPage = False
+        ws.page_setup.fitToWidth = None
+        ws.page_setup.fitToHeight = None
+        ws.page_setup.scale = 100
+    else:
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
 
     for index, width in enumerate(column_widths(sheet), start=1):
         ws.column_dimensions[get_column_letter(index)].width = width

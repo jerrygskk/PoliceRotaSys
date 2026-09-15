@@ -79,6 +79,14 @@
 - **XLS-2**: **設了 `fitToWidth`／`fitToHeight`，Excel 卻不照做**
   → 只設 `page_setup` 不夠，還要 `ws.sheet_properties.pageSetUpPr.fitToPage = True`，
   否則 Excel 直接忽略縮放設定（`export/xlsx_writer.py:_setup_page`）。
+- **XLS-3**: **`fitToPage` 明明放得下也會縮一級，左右白掉一大片** → 「調整成
+  1 頁寬 1 頁高」算頁面分割時比實際保守。現場實測：表格自然尺寸 410 × 287mm、
+  可列印區也是 410 × 287mm，**關掉 fitToPage 用 100% 印出來是紮紮實實的 1/1**，
+  開著卻仍然縮小、上下貼滿而左右留白。正解：**放得下就固定
+  `scale = 100` 並關掉 fitToPage**，欄數真的超出容量時才讓它接手
+  （`fits_in_one_page()`）。
+  ⚠️ 這類問題**容器驗不出來**——openpyxl 只負責寫檔，Excel 怎麼排版看不到，
+  只能請維護者開「版面設定」回報縮放比例與頁數。
 
 #### QT：Qt 與 PDF 輸出
 

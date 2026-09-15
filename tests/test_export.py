@@ -79,16 +79,23 @@ class TestXlsx(_TempDirCase):
     def test_file_is_written(self):
         self.assertGreater(Path(self.path).stat().st_size, 0)
 
-    def test_page_is_a3_landscape_fit_to_one_page(self):
+    def test_page_is_a3_landscape(self):
         # ⚠️ openpyxl 的 PAPERSIZE_A3 是字串 '8'，但存檔再讀回來是 int 8。
         # 直接拿常數比對會得到 8 != '8' 的假失敗，兩邊都轉 int 才對得起來。
         self.assertEqual(
             int(self.ws.page_setup.paperSize), int(self.ws.PAPERSIZE_A3)
         )
         self.assertEqual(self.ws.page_setup.orientation, "landscape")
-        self.assertTrue(self.ws.sheet_properties.pageSetUpPr.fitToPage)
-        self.assertEqual(self.ws.page_setup.fitToWidth, 1)
-        self.assertEqual(self.ws.page_setup.fitToHeight, 1)
+        self.assertTrue(self.ws.print_options.horizontalCentered)
+
+    def test_a_sheet_that_fits_prints_at_a_fixed_100_percent(self):
+        """⚠️ fitToPage 明明放得下也會縮一級，左右就白掉一大片。
+
+        現場實測：自然尺寸與可列印區都是 410 × 287mm，關掉 fitToPage 用
+        100% 印出來是 1/1，開著卻仍然縮小。
+        """
+        self.assertFalse(self.ws.sheet_properties.pageSetUpPr.fitToPage)
+        self.assertEqual(self.ws.page_setup.scale, 100)
 
     def test_title_is_the_leftmost_vertical_column(self):
         """⚠️ 標題在最左邊一整欄直書，不是橫置於頁首。"""
@@ -273,6 +280,20 @@ class TestAdaptiveWidth(unittest.TestCase):
     def test_three_more_people_still_fits(self):
         """再加三個人也還塞得下——這是維護者實際問到的情境。"""
         self.assertTrue(xlsx_writer.fits_in_one_page(self.sheet_with(37)))
+
+    def test_an_oversized_sheet_falls_back_to_fit_to_page(self):
+        """欄數真的超出容量時才讓 Excel 縮——那時縮小是應該的。"""
+        import tempfile
+        from pathlib import Path as _Path
+
+        with tempfile.TemporaryDirectory() as d:
+            path = str(_Path(d) / "big.xlsx")
+            sheet = self.sheet_with(60)
+            self.assertFalse(xlsx_writer.fits_in_one_page(sheet))
+            xlsx_writer.write_sheet(sheet, path)
+            ws = load_workbook(path).active
+            self.assertTrue(ws.sheet_properties.pageSetUpPr.fitToPage)
+            self.assertEqual(ws.page_setup.fitToWidth, 1)
 
     def test_the_capacity_limit_is_reported_rather_than_silently_shrunk(self):
         self.assertGreater(xlsx_writer.max_columns_per_page(), 50)
