@@ -1,6 +1,6 @@
 # 交接：PoliceRotaSys（給本機新對話）
 
-> 產生於 2026-09-15，由雲端容器的對話寫給接手的本機對話。
+> 產生於 2026-09-15（最後更新同日），由雲端容器的對話寫給接手的本機對話。
 > ⚠️ 這份是**當下的交接快照**，會過期。做完 GUI 那一輪請更新或刪掉它，
 > 不要讓它跟 `DEVELOPER.md` 打架——**兩邊不一致時以 `DEVELOPER.md` 為準**。
 
@@ -51,7 +51,7 @@ python -m pip install -r requirements-dev.txt
 
 | 套件 | 版本 | 用途 |
 |---|---|---|
-| `PySide6` | 6.11.2 | **產品 runtime**：GUI 與 PDF 輸出（`QPdfWriter`） |
+| `PySide6` | 6.11.1 | **產品 runtime**：GUI 與 PDF 輸出（`QPdfWriter`） |
 | `openpyxl` | 3.1.5 | **產品 runtime**：xlsx 輸出 |
 | `pytest` | 9.1.1 | 測試 |
 | `pytest-qt` | 4.5.0 | 之後寫 GUI pilot 要用 |
@@ -100,7 +100,7 @@ python -m unittest tests.test_no_pii        # push 前必跑
 `copy tests\pii_denylist.local.txt.example tests\pii_denylist.local.txt`，
 把要防的真名填進去（該檔已 gitignore，刻意不入庫）。
 
-## 3. 已完成（219 項測試通過，全在 `main` 上）
+## 3. 已完成（221 項測試通過，全在 `main` 上）
 
 ```
 lib/rota.py           排班演算法        ★ 零相依
