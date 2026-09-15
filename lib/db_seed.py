@@ -136,8 +136,8 @@ def _seed_draft(conn: sqlite3.Connection, ruleset_name: str) -> None:
     ):
         cur = conn.execute(
             "INSERT INTO RV_Group"
-            "(version_id, name, mode, range_expr, rest_code, header_before, "
-            "note, col_weight, sort_order) VALUES (?, ?, ?, ?, '00', ?, ?, ?, ?)",
+            "(version_id, name, mode, range_expr, header_before, "
+            "note, col_weight, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (version_id, name, mode, expr, 1 if header else 0, note, weight, order),
         )
         group_id = cur.lastrowid

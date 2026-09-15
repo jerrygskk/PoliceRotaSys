@@ -141,7 +141,7 @@ class TestXlsx(_TempDirCase):
         column = block_named(self.sheet, "大輪番").columns[5]  # 員06，第 6 格（休）
         index = column_index(self.sheet, column)
         cell = self.ws.cell(row=xlsx_writer.ROW_FIRST_DAY, column=index)
-        self.assertEqual(cell.value, "00")
+        self.assertEqual(cell.value, "休")
         self.assertEqual(cell.font.color.rgb, "FFCC0000")
 
     def test_weekend_day_cells_are_red_in_the_date_column(self):

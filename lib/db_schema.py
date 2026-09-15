@@ -53,7 +53,6 @@ TABLES = (
     name       TEXT NOT NULL,
     mode       TEXT NOT NULL CHECK (mode IN ('rotate','fixed','blank')),
     range_expr TEXT NOT NULL,
-    rest_code  TEXT NOT NULL DEFAULT '00',
     -- 這個區塊左邊要不要再放一次日期／星期欄。現行紙本不是每個區塊都有
     -- （幹部與快打勤務前面就沒有），所以做成設定而不是寫死規則。
     header_before INTEGER NOT NULL DEFAULT 1,
@@ -108,7 +107,7 @@ _LOCK_MSG = "已啟用的規則不可修改"
 
 
 def _lock_triggers(table: str, version_col: str = "version_id") -> tuple[str, ...]:
-    """對 table 產生「非草稿即禁改禁刪」的兩條 trigger。"""
+    """對 table 產生「非草稿即禁改、禁刪、禁新增」的三條 trigger。"""
     guard = (
         f"WHEN (SELECT status FROM Ruleset_Version "
         f"WHERE version_id = OLD.{version_col}) <> '草稿'"
@@ -119,6 +118,10 @@ BEFORE UPDATE ON {table} {guard}
 BEGIN SELECT RAISE(ABORT, '{_LOCK_MSG}'); END""",
         f"""CREATE TRIGGER IF NOT EXISTS trg_{table}_no_delete
 BEFORE DELETE ON {table} {guard}
+BEGIN SELECT RAISE(ABORT, '{_LOCK_MSG}'); END""",
+        # 新增也要擋：否則可以往已啟用的版本塞進新番組／新槽位，鎖形同虛設。
+        f"""CREATE TRIGGER IF NOT EXISTS trg_{table}_no_insert
+BEFORE INSERT ON {table} {guard.replace("OLD.", "NEW.")}
 BEGIN SELECT RAISE(ABORT, '{_LOCK_MSG}'); END""",
     )
 

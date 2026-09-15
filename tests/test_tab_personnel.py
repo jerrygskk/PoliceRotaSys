@@ -14,7 +14,8 @@ import main
 from lib import members
 from lib.db_utils import opened
 from tabs import tab_personnel
-from tabs.tab_personnel import TabPersonnel, _NAME_COL, _FEMALE_COL, _STATUS_COL, _COLOR_INACTIVE
+from tabs.tab_personnel import TabPersonnel, _NAME_COL, _FEMALE_COL, _STATUS_COL
+from ui_utils.sort_table import COLOR_INACTIVE as _COLOR_INACTIVE
 from ui_utils.member_dialog import MemberDialog
 
 _app = QApplication.instance() or QApplication([])

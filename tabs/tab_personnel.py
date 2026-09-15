@@ -6,122 +6,18 @@
   - 排序先暫存於記憶體，按「儲存排序」才寫入；新增／修改後保留未存順序
 拿掉別名欄、權限檢查與稽核（本專案只有承辦人一人使用）。
 """
-from PySide6.QtCore import Qt, QObject, QEvent, QRegularExpression
-from PySide6.QtGui import QColor, QPen, QRegularExpressionValidator
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QStyledItemDelegate, QStyle, QLineEdit,
-    QAbstractItemView,
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QHeaderView,
 )
 
 from lib import members
 from lib.db_utils import opened
 from ui_utils import BTN_CONFIRM, BTN_CANCEL, confirmBox, msgWarning, msgCritical, preserveScroll
 from ui_utils.member_dialog import MemberDialog
+from ui_utils.sort_table import (
+    COLOR_INACTIVE, SAVE_BTN_SS, makeHandleItem, makeItem, makeSeqItem, setupSortTable,
+)
 
-
-class _NoFocusDelegate(QStyledItemDelegate):
-    """移除「目前儲存格」焦點外框（Windows 樣式點擊後會在該格畫框）。
-    僅去焦點框，保留列選取底色（拖拉排序需要 currentRow）。"""
-    def paint(self, painter, option, index):
-        if option.state & QStyle.State_HasFocus:
-            option.state &= ~QStyle.State_HasFocus
-        super().paint(painter, option, index)
-
-
-class _SeqEditDelegate(_NoFocusDelegate):
-    """序號欄專用 delegate：editor 限定只能打數字；
-    paint 疊一層淺色虛線框，常駐提示「這格可以點來改」（呼應 ⠿ 把手欄的提示風格）。"""
-
-    def createEditor(self, parent, option, index):
-        editor = QLineEdit(parent)
-        editor.setValidator(QRegularExpressionValidator(
-            QRegularExpression(r"[0-9]*"), editor))
-        editor.setAlignment(Qt.AlignCenter)
-        # 全域 theme.py 對所有 QLineEdit 套 padding: 6px 10px，疊上字級後在固定 36px 列高
-        # 裡可能擠到下緣被裁切；padding/margin 歸零騰出空間。border 不覆寫，沿用
-        # theme.py 原本的數字（平常 1px、focus 2px，cascade 自動接回來）
-        editor.setStyleSheet("font-size: 13pt; padding: 0px; margin: 0px;")
-        return editor
-
-    def paint(self, painter, option, index):
-        super().paint(painter, option, index)
-        painter.save()
-        pen = QPen(QColor("#9bb0c9"))
-        pen.setStyle(Qt.DashLine)
-        painter.setPen(pen)
-        painter.drawRect(option.rect.adjusted(2, 2, -3, -3))
-        painter.restore()
-
-
-class _RowDragFilter(QObject):
-    """攔截 QTableWidget viewport 的 Drop 事件，實作整列拖拉（Qt InternalMove 只移格，不移列）。"""
-    def __init__(self, tbl, callback):
-        super().__init__(tbl)
-        self._tbl = tbl
-        self._cb  = callback  # callback(src_row, dst_row)
-
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.Drop:
-            src = self._tbl.currentRow()
-            dst = self._tbl.rowAt(int(event.position().y()))
-            if dst < 0:
-                dst = self._tbl.rowCount() - 1
-            if src >= 0 and src != dst:
-                self._cb(src, dst)
-            return True   # 阻止 Qt 的預設錯位行為
-        return False
-
-
-# ── 表格樣式 ────────────────────────────────────────────────────
-_TABLE_SS = """
-    QTableWidget {
-        background-color: #ffffff;
-        alternate-background-color: #f2f2f7;
-        border: none;
-        border-top: 1px solid #c6c6c8;
-        font-size: 13pt;
-        outline: 0;
-    }
-    QHeaderView::section {
-        background-color: #f2f2f7;
-        color: #3a3a3c;
-        font-weight: 600;
-        font-size: 13pt;
-        padding: 4px 8px;
-        border: none;
-        border-bottom: 2px solid #c6c6c8;
-        border-right: 1px solid #e5e5ea;
-    }
-    QTableWidget::item {
-        padding: 4px 8px;
-        border-bottom: 1px solid #e5e5ea;
-    }
-    QTableWidget::item:selected {
-        background-color: #ccdaeb;
-    }
-"""
-
-# 離職列灰字
-_COLOR_INACTIVE = "#aeaeb2"
-
-# 儲存排序鈕樣式（含 disabled 灰色狀態）
-_SAVE_BTN_SS = """
-    QPushButton {
-        background-color: #D0ECF5;
-        color: #000000;
-        border: 1px solid #b0d4e0;
-        border-radius: 6px;
-        padding: 6px 16px;
-        font-size: 13pt;
-    }
-    QPushButton:hover    { background-color: #B8D8E8; }
-    QPushButton:disabled {
-        background-color: #e8e8ed;
-        color: #aeaeb2;
-        border: 1px solid #d1d1d6;
-    }
-"""
 
 _HANDLE_COL = 0
 _SEQ_COL    = 1
@@ -161,15 +57,7 @@ class TabPersonnel(QWidget):
         tbl.setHorizontalHeaderLabels(_HEADERS)
         lay.addWidget(tbl)
 
-        tbl.verticalHeader().setVisible(False)
-        tbl.setEditTriggers(QTableWidget.NoEditTriggers)
-        tbl.setSelectionBehavior(QTableWidget.SelectRows)
-        tbl.setSelectionMode(QTableWidget.SingleSelection)
-        tbl.setAlternatingRowColors(True)
-        tbl.setShowGrid(False)
-        tbl.verticalHeader().setDefaultSectionSize(36)
-        tbl.setStyleSheet(_TABLE_SS)
-        tbl.setItemDelegate(_NoFocusDelegate(tbl))
+        self._drag_filter, self._seq_delegate = setupSortTable(tbl, _SEQ_COL, self._moveRow)
         hdr = tbl.horizontalHeader()
         hdr.setSectionResizeMode(_HANDLE_COL, QHeaderView.Fixed)
         tbl.setColumnWidth(_HANDLE_COL, 36)
@@ -185,21 +73,11 @@ class TabPersonnel(QWidget):
         tbl.cellClicked.connect(self._onCellClicked)
         tbl.cellDoubleClicked.connect(self._onCellDoubleClicked)
 
-        # 拖拉排序（event filter 攔截 Drop，改成整列記憶體操作）
-        tbl.setDragDropMode(QAbstractItemView.InternalMove)
-        tbl.setDefaultDropAction(Qt.MoveAction)
-        tbl.setAutoScrollMargin(90)
-        self._drag_filter = _RowDragFilter(tbl, self._moveRow)
-        tbl.viewport().installEventFilter(self._drag_filter)
-
-        # 序號欄可編輯（打數字搬移）
-        self._seq_delegate = _SeqEditDelegate(tbl)
-        tbl.setItemDelegateForColumn(_SEQ_COL, self._seq_delegate)
         tbl.itemChanged.connect(self._onSeqItemChanged)
 
         self.btn_add.setStyleSheet(BTN_CONFIRM)
         self.btn_edit.setStyleSheet(BTN_CANCEL)
-        self.btn_save.setStyleSheet(_SAVE_BTN_SS)
+        self.btn_save.setStyleSheet(SAVE_BTN_SS)
         self.btn_add.clicked.connect(self._addMember)
         self.btn_edit.clicked.connect(lambda: self._editMember())
         self.btn_save.setEnabled(False)
@@ -218,20 +96,6 @@ class TabPersonnel(QWidget):
         self._setDirty(False)
         self._render()
 
-    def _item(self, text, color=None):
-        it = QTableWidgetItem(str(text) if text is not None else "")
-        it.setTextAlignment(Qt.AlignCenter)
-        it.setForeground(QColor(color if color else "#1c1c1e"))
-        return it
-
-    def _handleItem(self):
-        """拖拉把手格（⠿）：灰色、置中、提示可拖拉整列。"""
-        it = QTableWidgetItem("⠿")
-        it.setTextAlignment(Qt.AlignCenter)
-        it.setForeground(QColor("#8e8e93"))
-        it.setToolTip("按住可拖拉整列以調整排序")
-        return it
-
     def _render(self):
         tbl = self.tbl
 
@@ -241,14 +105,13 @@ class TabPersonnel(QWidget):
                 tbl.setRowCount(0)
                 for r, (_mid, name, active, female) in enumerate(self._rows):
                     tbl.insertRow(r)
-                    color = None if active else _COLOR_INACTIVE
-                    tbl.setItem(r, _HANDLE_COL, self._handleItem())
-                    seq_item = self._item(r + 1, color)
-                    seq_item.setBackground(QColor("#F5F7FA"))
+                    color = None if active else COLOR_INACTIVE
+                    tbl.setItem(r, _HANDLE_COL, makeHandleItem())
+                    seq_item = makeSeqItem(r + 1, color)
                     tbl.setItem(r, _SEQ_COL, seq_item)
-                    tbl.setItem(r, _NAME_COL, self._item(name, color))
-                    tbl.setItem(r, _FEMALE_COL, self._item("✓" if female else "", color))
-                    tbl.setItem(r, _STATUS_COL, self._item("在職" if active else "離職", color))
+                    tbl.setItem(r, _NAME_COL, makeItem(name, color))
+                    tbl.setItem(r, _FEMALE_COL, makeItem("✓" if female else "", color))
+                    tbl.setItem(r, _STATUS_COL, makeItem("在職" if active else "離職", color))
             finally:
                 tbl.blockSignals(False)
 

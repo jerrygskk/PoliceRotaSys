@@ -237,10 +237,13 @@ def _header_block(year: int, month: int, day_count: int) -> Block:
     )
 
 
+# 休的格子一律印「休」（維護者裁示：印 00 不知所云）。
+REST_TEXT = "休"
+
+
 def _member_column(
     entry: Entry,
     day_count: int,
-    rest_code: str,
     kind: str = COL_MEMBER,
     weight: float = WEIGHT_DEFAULT,
 ) -> Column:
@@ -253,7 +256,7 @@ def _member_column(
                 f"但這個月是 {day_count} 天"
             )
         cells = tuple(
-            Cell(rest_code, RED) if slot.is_rest else Cell(slot.code, BLACK)
+            Cell(REST_TEXT, RED) if slot.is_rest else Cell(slot.code, BLACK)
             for slot in entry.slots
         )
     return Column(
@@ -268,7 +271,6 @@ def build_sheet(
     year: int,
     month: int,
     sections: list[Section],
-    rest_code: str = "00",
     blank_sections: frozenset[str] = frozenset(),
     title_format: str = DEFAULT_TITLE_FORMAT,
 ) -> Sheet:
@@ -291,7 +293,7 @@ def build_sheet(
         is_blank = section.name in blank_sections
         kind = COL_BLANK if is_blank else COL_MEMBER
         columns = tuple(
-            _member_column(entry, day_count, rest_code, kind, section.weight)
+            _member_column(entry, day_count, kind, section.weight)
             for entry in section.entries
         )
         if is_blank and section.note:

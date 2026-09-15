@@ -3,7 +3,7 @@
 開機流程：建立／補齊資料庫結構 → 第一次開啟時塞入種子資料（假名模板＋一份輪番草稿）
 → 套全域公版樣式 → 開主視窗。
 
-⚠️ 目前只有「人員」分頁；產生月表／輪番設定／維護三頁依序補上（DEVELOPER §4）。
+⚠️ 目前有「輪番設定」「人員」分頁；產生月表／維護兩頁依序補上（DEVELOPER §4）。
 """
 import os
 import sys
@@ -18,6 +18,7 @@ from lib.version import __version__
 from lib.window_geometry import apply_startup_geometry
 from res import resources_rc  # noqa: F401  註冊 Qt resource（下拉箭頭、勾選框圖示）
 from tabs.tab_personnel import TabPersonnel
+from tabs.tab_rules import TabRules
 from ui_utils import installDateEditInputGuard
 
 APP_NAME = "警察勤務輪番表產生器"
@@ -47,12 +48,16 @@ class MainWindow(QMainWindow):
         self.resize(1440, 780)
 
         self.tabs = QTabWidget()
+        # 分頁順序照使用頻率（DEVELOPER §4）：產生月表／輪番設定／人員／維護
+        self.tab_rules = TabRules(db_path)
+        self.tabs.addTab(self.tab_rules, "輪番設定")
         self.tab_personnel = TabPersonnel(db_path)
         self.tabs.addTab(self.tab_personnel, "人員")
         self.setCentralWidget(self.tabs)
 
     def closeEvent(self, event):
         # 未存排序：詢問儲存或放棄（leave 一律放行關閉）
+        self.tab_rules.promptUnsaved(context="leave")
         self.tab_personnel.promptUnsaved(context="leave")
         event.accept()
 

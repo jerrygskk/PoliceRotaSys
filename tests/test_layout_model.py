@@ -94,9 +94,9 @@ class TestBuildSheet(unittest.TestCase):
         for column in self.sheet.columns:
             self.assertEqual(len(column.cells), 31, column.header)
 
-    def test_rest_cells_are_red_double_zero(self):
+    def test_rest_cells_print_rest_in_red(self):
         column = block_named(self.sheet, "大輪番").columns[0]  # 王小明
-        self.assertEqual(column.cells[1].text, "00")
+        self.assertEqual(column.cells[1].text, "休")
         self.assertEqual(column.cells[1].color, RED)
 
     def test_duty_cells_are_black(self):
@@ -128,10 +128,6 @@ class TestBuildSheet(unittest.TestCase):
             all(col.kind == COL_MEMBER
                 for col in block_named(self.sheet, "大輪番").columns)
         )
-
-    def test_custom_rest_code_is_honoured(self):
-        sheet = build_sheet(UNIT, 2026, 10, [rotate_section()], rest_code="休")
-        self.assertEqual(block_named(sheet, "大輪番").columns[0].cells[1].text, "休")
 
 
 class TestAxisOrientation(unittest.TestCase):
@@ -172,8 +168,8 @@ class TestPaperFidelity(unittest.TestCase):
     """整張表與紙本對照（115 年 10 月）。"""
 
     PAPER_ROW = [
-        "12", "00", "00", "15", "16", "17", "18", "00", "00",
-        "01", "02", "03", "04", "05", "00", "00", "08",
+        "12", "休", "休", "15", "16", "17", "18", "休", "休",
+        "01", "02", "03", "04", "05", "休", "休", "08",
     ]
 
     def test_first_column_text_matches_paper(self):
@@ -188,7 +184,7 @@ class TestPaperFidelity(unittest.TestCase):
         sheet = build_sheet(UNIT, 2026, 10, [rotate_section(seeds={"王小明": 12})])
         column = block_named(sheet, "大輪番").columns[0]
         for cell in column.cells:
-            self.assertEqual(cell.color == RED, cell.text == "00")
+            self.assertEqual(cell.color == RED, cell.text == "休")
 
 
 if __name__ == "__main__":

@@ -309,7 +309,7 @@ class TestBuildSheetFor(_PlanTestCase):
         column = block_named(sheet, "大輪番").columns[0]
         self.assertEqual(
             [c.text for c in column.cells[:10]],
-            ["12", "00", "00", "15", "16", "17", "18", "00", "00", "01"],
+            ["12", "休", "休", "15", "16", "17", "18", "休", "休", "01"],
         )
 
 
