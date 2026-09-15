@@ -4,7 +4,7 @@
 
 from .ui_common import (
     msgInfo, msgWarning, msgCritical, confirmBox, loadUi,
-    BTN_CONFIRM, BTN_DANGER, BTN_CANCEL,
+    BTN_CONFIRM, BTN_DANGER, BTN_CANCEL, BTN_ROW_SPACING, styleButton,
 )
 from .widgets import (
     setupFilterCombo, setupDateEditToToday, setupDateEditCalendarOnly,
@@ -28,7 +28,7 @@ from .table import (
 
 __all__ = [
     "msgInfo", "msgWarning", "msgCritical", "confirmBox", "loadUi",
-    "BTN_CONFIRM", "BTN_DANGER", "BTN_CANCEL",
+    "BTN_CONFIRM", "BTN_DANGER", "BTN_CANCEL", "BTN_ROW_SPACING", "styleButton",
     "setupFilterCombo", "refreshFilterCombo", "attachComboHint",
     "setupDateEditToToday", "setupDateEditCalendarOnly",
     "installDateEditWheelGuard", "installDateEditInputGuard",

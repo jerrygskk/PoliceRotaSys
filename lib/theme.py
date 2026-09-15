@@ -1,6 +1,5 @@
 # Apple HIG 全域樣式表
-# arrow.svg 路徑在 main.py 啟動時動態替換（ARROW_PLACEHOLDER → 絕對路徑）
-# 打包後從 _MEIPASS 讀，開發時從當前目錄讀
+# 下拉箭頭與勾選框圖示走 Qt resource（:/arrow.svg 等，見 res/resources.qrc），main.py 匯入 res.resources_rc 註冊
 
 # 可打字 QComboBox 提示文字／正常文字色（供 ui_utils.widgets.attachComboHint 使用）。
 # HINT_COLOR 與下方 QLineEdit::placeholder 同色，統一全專案的「提示灰」。
@@ -344,7 +343,7 @@ QPushButton#gen_do_archive:disabled {
 /* ── Tab 標籤 ── */
 QTabWidget::pane {
     border: none;
-    background-color: #ffffff;
+    background-color: #f2f2f7;
 }
 QTabBar::tab {
     background-color: #e5e5ea;
@@ -494,5 +493,118 @@ QLabel#subtitleLabel {
 QLabel#versionLabel {
     font-size: 11pt;
     color: #aeaeb2;
+}
+
+/* ── 卡片式排版（2026-09-16，PoliceRotaSys）──
+   分頁底色淺灰，每個區塊放在白色圓角卡片（ui_utils/card.py 的 Card）裡。
+   區塊靠「灰底＋白卡」分開，不靠一堆框線。框線一律用中灰 #c7c7cc 以上，
+   不用 #e5e5ea 這種跟白底幾乎分不出來的顏色（維護者回報：框色跟底色太接近）。 */
+QFrame#card {
+    background-color: #ffffff;
+    border: 1px solid #c7c7cc;
+    border-radius: 10px;
+}
+QLabel#cardTitle {
+    font-size: 15pt;
+    font-weight: 600;
+    color: #1c1c1e;
+}
+QLabel#cardHint {
+    font-size: 12pt;
+    color: #636366;
+}
+QLabel#infoBanner {
+    background-color: #e3edf8;
+    color: #274b72;
+    border: 1px solid #b9cfe6;
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+QLabel#infoBanner[tone="locked"] {
+    background-color: #ececf0;
+    color: #48484a;
+    border: 1px solid #c7c7cc;
+}
+
+/* ── 版本清單（輪番設定）：每筆一張小卡 ── */
+QListWidget#versionList {
+    background-color: transparent;
+    border: none;
+    outline: 0;
+}
+QListWidget#versionList::item {
+    background-color: #ffffff;
+    border: 1px solid #c7c7cc;
+    border-radius: 8px;
+}
+QListWidget#versionList::item:hover {
+    border: 1px solid #8e8e93;
+}
+QListWidget#versionList::item:selected {
+    background-color: #e3edf8;
+    border: 2px solid #5b86b5;
+}
+QLabel#versionName {
+    font-weight: 600;
+}
+QLabel#badge {
+    font-size: 11pt;
+    border-radius: 6px;
+    padding: 2px 8px;
+}
+QLabel#badge[tone="draft"] {
+    background-color: #ececf0;
+    color: #48484a;
+}
+QLabel#badge[tone="active"] {
+    background-color: #e3edf8;
+    color: #274b72;
+}
+QLabel#badge[tone="latest"] {
+    background-color: #dff3e4;
+    color: #1f6b35;
+}
+
+/* ── 槽位方塊（輪番設定）── */
+QLabel#slotTile {
+    background-color: #ffffff;
+    border: 1px solid #aeaeb2;
+    border-radius: 8px;
+    color: #1c1c1e;
+    font-size: 13pt;
+}
+QLabel#slotTile[state="rest"] {
+    background-color: #fde8e8;
+    border: 1px solid #e08a8a;
+    color: #b42318;
+}
+QLabel#slotTile[state="override"] {
+    background-color: #fff3cd;
+    border: 1px solid #d9b44a;
+    color: #7a5600;
+}
+QLabel#slotTile[editable="true"]:hover {
+    border: 2px solid #5b86b5;
+}
+QLabel#slotTile[editable="false"] {
+    color: #8e8e93;
+}
+QLabel#legendChip {
+    font-size: 11pt;
+    color: #636366;
+    border-radius: 4px;
+    padding: 1px 8px;
+    border: 1px solid #aeaeb2;
+    background-color: #ffffff;
+}
+QLabel#legendChip[state="rest"] {
+    background-color: #fde8e8;
+    border: 1px solid #e08a8a;
+    color: #b42318;
+}
+QLabel#legendChip[state="override"] {
+    background-color: #fff3cd;
+    border: 1px solid #d9b44a;
+    color: #7a5600;
 }
 """

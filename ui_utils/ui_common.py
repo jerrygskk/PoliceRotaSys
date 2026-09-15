@@ -17,6 +17,17 @@ BTN_CONFIRM  = f"QPushButton {{ background-color: #D0ECF5; color: #000000; {_BTN
 BTN_DANGER   = f"QPushButton {{ background-color: #F5D4D0; color: #000000; {_BTN_BASE} }} QPushButton:hover {{ background-color: #E0BDB8; }} {_BTN_DISABLED}"
 BTN_CANCEL   = f"QPushButton {{ background-color: #F2F2F7; color: #000000; {_BTN_BASE} }} QPushButton:hover {{ background-color: #E5E5EA; }} {_BTN_DISABLED}"
 
+# 分頁上的按鈕列：同排一樣高、間距一致（按鈕只放文字，不加符號或圖示）
+BTN_ROW_SPACING = 12
+BTN_MIN_HEIGHT  = 40
+
+
+def styleButton(btn, role):
+    """套用按鈕角色：'primary' 藍（一區只放一顆）／'normal' 灰／'danger' 紅。"""
+    btn.setStyleSheet({"primary": BTN_CONFIRM, "normal": BTN_CANCEL, "danger": BTN_DANGER}[role])
+    btn.setMinimumHeight(BTN_MIN_HEIGHT)
+    return btn
+
 
 # ── 通用訊息彈窗（確定按鈕中文，統一樣式）────────────────────
 def _makeMsg(icon, title, text, parent=None):

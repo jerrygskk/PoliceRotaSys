@@ -1,15 +1,15 @@
 """
 sort_table.py — 可拖拉排序的表格公版（自 PoliceDocSys 設定頁人員管理搬入）
 
-人員分頁與輪番設定的番組表共用：
+人員分頁與輪番設定的群組表共用：
   - _NoFocusDelegate   去掉「目前儲存格」焦點外框
   - _SeqEditDelegate   序號欄：只能打數字、常駐虛線框提示可點改
   - _RowDragFilter     攔截 Drop，改成整列搬移（Qt InternalMove 只移格）
-  - TABLE_SS / SAVE_BTN_SS / COLOR_INACTIVE  表格、儲存排序鈕、停用灰字樣式
+  - TABLE_SS / COLOR_INACTIVE  表格樣式、停用灰字
   - setupSortTable     套上述行為的一次性設定
 """
 from PySide6.QtCore import Qt, QObject, QEvent, QRegularExpression
-from PySide6.QtGui import QColor, QPen, QRegularExpressionValidator
+from PySide6.QtGui import QColor, QPalette, QPen, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QStyledItemDelegate, QStyle, QLineEdit,
     QAbstractItemView,
@@ -22,6 +22,10 @@ class _NoFocusDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
         if option.state & QStyle.State_HasFocus:
             option.state &= ~QStyle.State_HasFocus
+        # 選取列維持原本字色：系統預設會把選取字改成白色，在淡藍底上幾乎看不見
+        fg = index.data(Qt.ForegroundRole)
+        if fg is not None:
+            option.palette.setBrush(QPalette.HighlightedText, fg)
         super().paint(painter, option, index)
 
 
@@ -73,51 +77,35 @@ class _RowDragFilter(QObject):
 TABLE_SS = """
     QTableWidget {
         background-color: #ffffff;
-        alternate-background-color: #f2f2f7;
-        border: none;
-        border-top: 1px solid #c6c6c8;
+        alternate-background-color: #f7f7f9;
+        border: 1px solid #c7c7cc;
+        border-radius: 8px;
         font-size: 13pt;
         outline: 0;
     }
     QHeaderView::section {
-        background-color: #f2f2f7;
+        background-color: #ececf0;
         color: #3a3a3c;
         font-weight: 600;
         font-size: 13pt;
-        padding: 4px 8px;
+        padding: 6px 8px;
         border: none;
-        border-bottom: 2px solid #c6c6c8;
-        border-right: 1px solid #e5e5ea;
+        border-bottom: 1px solid #aeaeb2;
+        border-right: 1px solid #d1d1d6;
     }
     QTableWidget::item {
         padding: 4px 8px;
-        border-bottom: 1px solid #e5e5ea;
+        border-bottom: 1px solid #dcdce1;
     }
     QTableWidget::item:selected {
-        background-color: #ccdaeb;
+        background-color: #d6e4f3;
+        color: #1c1c1e;
     }
 """
 
 # 停用列（離職人員）灰字
 COLOR_INACTIVE = "#aeaeb2"
 
-# 儲存排序鈕樣式（含 disabled 灰色狀態）
-SAVE_BTN_SS = """
-    QPushButton {
-        background-color: #D0ECF5;
-        color: #000000;
-        border: 1px solid #b0d4e0;
-        border-radius: 6px;
-        padding: 6px 16px;
-        font-size: 13pt;
-    }
-    QPushButton:hover    { background-color: #B8D8E8; }
-    QPushButton:disabled {
-        background-color: #e8e8ed;
-        color: #aeaeb2;
-        border: 1px solid #d1d1d6;
-    }
-"""
 
 
 def setupSortTable(tbl, seq_col, on_move, row_height=36):

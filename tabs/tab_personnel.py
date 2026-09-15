@@ -7,15 +7,16 @@
 拿掉別名欄、權限檢查與稽核（本專案只有承辦人一人使用）。
 """
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QHeaderView,
+    QWidget, QVBoxLayout, QPushButton, QTableWidget, QHeaderView,
 )
 
 from lib import members
 from lib.db_utils import opened
-from ui_utils import BTN_CONFIRM, BTN_CANCEL, confirmBox, msgWarning, msgCritical, preserveScroll
+from ui_utils import confirmBox, msgWarning, msgCritical, preserveScroll, styleButton
+from ui_utils.card import Card
 from ui_utils.member_dialog import MemberDialog
 from ui_utils.sort_table import (
-    COLOR_INACTIVE, SAVE_BTN_SS, makeHandleItem, makeItem, makeSeqItem, setupSortTable,
+    COLOR_INACTIVE, makeHandleItem, makeItem, makeSeqItem, setupSortTable,
 )
 
 
@@ -39,23 +40,23 @@ class TabPersonnel(QWidget):
     # ── 版面 ────────────────────────────────────────────────────
     def _build(self):
         lay = QVBoxLayout(self)
-        lay.setSpacing(8)
         lay.setContentsMargins(20, 16, 20, 16)
+        card = Card("人員名單")
+        lay.addWidget(card)
 
-        row = QHBoxLayout()
-        row.setSpacing(8)
-        self.btn_add = QPushButton("＋ 新增")
-        self.btn_edit = QPushButton("✎ 修改")
-        self.btn_save = QPushButton("💾 儲存排序")
-        row.addWidget(self.btn_add)
-        row.addWidget(self.btn_edit)
-        row.addStretch()
-        row.addWidget(self.btn_save)
-        lay.addLayout(row)
+        # 左群編輯內容、右群存檔；藍色一區只放一顆
+        self.btn_add = styleButton(QPushButton("新增"), "primary")
+        self.btn_edit = styleButton(QPushButton("修改"), "normal")
+        self.btn_save = styleButton(QPushButton("儲存排序"), "primary")
+        card.header.addStretch()
+        card.header.addWidget(self.btn_add)
+        card.header.addWidget(self.btn_edit)
+        card.header.addSpacing(20)
+        card.header.addWidget(self.btn_save)
 
         tbl = self.tbl = QTableWidget(0, len(_HEADERS))
         tbl.setHorizontalHeaderLabels(_HEADERS)
-        lay.addWidget(tbl)
+        card.body.addWidget(tbl)
 
         self._drag_filter, self._seq_delegate = setupSortTable(tbl, _SEQ_COL, self._moveRow)
         hdr = tbl.horizontalHeader()
@@ -75,9 +76,6 @@ class TabPersonnel(QWidget):
 
         tbl.itemChanged.connect(self._onSeqItemChanged)
 
-        self.btn_add.setStyleSheet(BTN_CONFIRM)
-        self.btn_edit.setStyleSheet(BTN_CANCEL)
-        self.btn_save.setStyleSheet(SAVE_BTN_SS)
         self.btn_add.clicked.connect(self._addMember)
         self.btn_edit.clicked.connect(lambda: self._editMember())
         self.btn_save.setEnabled(False)
