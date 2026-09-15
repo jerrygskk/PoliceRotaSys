@@ -199,6 +199,18 @@ def max_columns_per_page() -> int:
     return int(PRINTABLE_W_PT // _width_to_points(MIN_COL_WIDTH))
 
 
+def _border_range(ws: Worksheet, first_row, first_col, last_row, last_col) -> None:
+    """替合併範圍內的**每一格**補上框線。
+
+    ⚠️ Excel 不會自己補：框線只設在左上角那一格時，合併後只會畫出那一格的
+    邊，其餘三邊是空的。標題欄（合併整欄）因此整欄看不到框線——現場回報
+    「格線自己不見」。
+    """
+    for row in range(first_row, last_row + 1):
+        for col in range(first_col, last_col + 1):
+            ws.cell(row=row, column=col).border = _BORDER
+
+
 def _argb(color: str) -> str:
     if color == RED:
         return _RED
@@ -274,6 +286,7 @@ def _write_note(ws: Worksheet, first: int, block: Block) -> None:
     cell.alignment = _NOTE
     cell.border = _BORDER
     if last > first:
+        _border_range(ws, ROW_NAME, first, ROW_NAME, last)
         ws.merge_cells(
             start_row=ROW_NAME, start_column=first,
             end_row=ROW_NAME, end_column=last,
@@ -287,6 +300,7 @@ def _write_title_column(ws: Worksheet, index: int, sheet: Sheet) -> None:
     cell.font = Font(name=FONT_NAME, size=TITLE_FONT_SIZE, bold=True)
     cell.alignment = _VERTICAL
     cell.border = _BORDER
+    _border_range(ws, ROW_NAME, index, last, index)
     ws.merge_cells(
         start_row=ROW_NAME, start_column=index, end_row=last, end_column=index
     )
@@ -310,6 +324,7 @@ def _write_column(
         # 沒有小標題的欄（同仁專案臨檢、快打勤務），標題跨姓名列與代碼列，
         # 照紙本的合併方式。
         if not column.code and column.kind in (COL_BLANK, COL_TITLE):
+            _border_range(ws, ROW_NAME, index, ROW_CODE, index)
             ws.merge_cells(
                 start_row=ROW_NAME, start_column=index,
                 end_row=ROW_CODE, end_column=index,

@@ -21,6 +21,7 @@ from PySide6.QtGui import (
     QPageSize,
     QPainter,
     QPdfWriter,
+    QPen,
 )
 
 from lib.layout_model import (
@@ -34,6 +35,12 @@ from lib.layout_model import (
 )
 
 RESOLUTION = 300          # dpi
+
+# ⚠️ 框線要有明確寬度並把整張表**往內縮半個線寬**。
+#
+# 第一版用預設的 cosmetic pen 直接畫在 x=0／y=0，最外圈那條線有一半落在頁面
+# 外被裁掉——標題欄因此整欄看不到框線（現場回報「格線自己不見」）。
+BORDER_PX = 2.0
 # ⚠️ 邊界留 5mm 就好——留太多等於把欄寬白白讓掉。5mm 是一般雷射印表機
 # 的安全下限，再小會有印不到的風險。
 MARGIN_MM = 5.0
@@ -97,7 +104,12 @@ def write_sheet(sheet: Sheet, path: str) -> None:
 
     painter = QPainter(writer)
     try:
-        _paint(painter, QRectF(0, 0, writer.width(), writer.height()), sheet)
+        inset = BORDER_PX / 2
+        page = QRectF(0, 0, writer.width(), writer.height()).adjusted(
+            inset, inset, -inset, -inset
+        )
+        painter.setPen(QPen(QColor("#000000"), BORDER_PX))
+        _paint(painter, page, sheet)
     finally:
         painter.end()
 
@@ -206,7 +218,7 @@ def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
 
 def _paint_note(painter: QPainter, rect: QRectF, note, body_px: float) -> None:
     """區塊註記：跨整個區塊的合併格，逐行不同顏色（照紙本）。"""
-    painter.setPen(QColor("#000000"))
+    painter.setPen(_border_pen())
     painter.drawRect(rect)
     if not note:
         return
@@ -242,7 +254,7 @@ def _paint_title_column(
     painter: QPainter, rect: QRectF, title: str, body_px: float
 ) -> None:
     """最左邊那一整欄：直書標題，跨全高。"""
-    painter.setPen(QColor("#000000"))
+    painter.setPen(_border_pen())
     painter.drawRect(rect)
     if not title:
         return
@@ -259,8 +271,12 @@ def _paint_title_column(
         )
 
 
+def _border_pen() -> QPen:
+    return QPen(QColor("#000000"), BORDER_PX)
+
+
 def _paint_cell(painter: QPainter, rect: QRectF, text: str, color: str) -> None:
-    painter.setPen(QColor("#000000"))
+    painter.setPen(_border_pen())
     painter.drawRect(rect)
     if not text:
         return
@@ -279,7 +295,7 @@ def _paint_vertical_header(
     ⚠️ 字級要**依姓名長度縮**：三個字放得下不代表四個字也放得下，
     而複姓或原住民姓名在警察單位不算少見。
     """
-    painter.setPen(QColor("#000000"))
+    painter.setPen(_border_pen())
     painter.drawRect(rect)
     text = column.header
     if not text:

@@ -71,6 +71,11 @@
   一個多人的空間。明設 5mm（一般雷射印表機的安全下限）；PDF 的
   `setPageMargins` 同步。
 
+- **LAY-13**: **PDF 最外圈的框線整條不見** → 框線畫在 `x=0`／`y=0`，有一半落在
+  頁面外被裁掉；標題欄在最左邊，所以整欄看起來沒有格線。正解：框線給明確寬度
+  （`BORDER_PX`）並把整張表**往內縮半個線寬**再畫。
+  ⚠️ 預設的 cosmetic pen（寬度 0）更容易中招，因為它的實際寬度由裝置決定。
+
 #### XLS：openpyxl
 
 - **XLS-1**: **`page_setup.paperSize` 拿常數比對得到 `8 != '8'` 的假失敗**
@@ -79,6 +84,10 @@
 - **XLS-2**: **設了 `fitToWidth`／`fitToHeight`，Excel 卻不照做**
   → 只設 `page_setup` 不夠，還要 `ws.sheet_properties.pageSetUpPr.fitToPage = True`，
   否則 Excel 直接忽略縮放設定（`export/xlsx_writer.py:_setup_page`）。
+- **XLS-5**: **合併儲存格只有一邊有框線** → Excel **不會**替合併範圍補框線。
+  框線只設在左上角那一格時，合併後只畫得出那一格的邊，其餘三邊是空的——標題欄
+  合併整欄，於是整欄看不到格線。正解：合併**之前**先替範圍內每一格都設 border
+  （`export/xlsx_writer.py:_border_range`）。
 - **XLS-4**: **欄寬換算每欄多加 5px，整張表比算的窄 16%** → 常見公式寫成
   `pixels = width × MDW + 5`，那是 Excel **UI 顯示**「8.43 (64 像素)」時的算法；
   **實際版面佔的寬度是 `width × MDW`**，那 5px 在 Excel 把「可見字元數」換算成

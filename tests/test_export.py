@@ -161,6 +161,24 @@ class TestXlsx(_TempDirCase):
                 self.ws.cell(row=xlsx_writer.ROW_FIRST_DAY + day, column=index).value
             )
 
+    def test_every_cell_of_a_merged_range_has_borders(self):
+        """⚠️ Excel 不會替合併範圍補框線。
+
+        框線只設在左上角那一格時，合併後只畫得出那一格的邊，其餘是空的——
+        標題欄（合併整欄）因此整欄看不到框線。
+        """
+        from openpyxl.utils import range_boundaries
+
+        for merged in self.ws.merged_cells.ranges:
+            first_col, first_row, last_col, last_row = range_boundaries(str(merged))
+            for row in range(first_row, last_row + 1):
+                for col in range(first_col, last_col + 1):
+                    cell = self.ws.cell(row=row, column=col)
+                    self.assertIsNotNone(
+                        cell.border.left.style,
+                        f"{cell.coordinate}（合併範圍 {merged}）沒有框線",
+                    )
+
     def test_blank_section_still_has_borders(self):
         """留白不等於沒有格線——手寫要有格子可以寫。"""
         column = block_named(self.sheet, "固定番").columns[0]
@@ -433,6 +451,15 @@ class TestPdf(_TempDirCase):
         self.assertGreater(width, height)
         self.assertAlmostEqual(width, 1190.55, delta=2)
         self.assertAlmostEqual(height, 841.89, delta=2)
+
+    def test_the_outermost_border_is_not_clipped(self):
+        """⚠️ 最外圈的框線不可畫在頁面邊界上，會有一半落在頁外被裁掉。
+
+        第一版直接畫在 x=0／y=0，標題欄整欄看不到框線。
+        """
+        self.assertGreater(pdf_writer.BORDER_PX, 0)
+        # 版面已內縮半個線寬，最左邊那一欄的框線才畫得出來。
+        self.assertIn(b"re", self.blob[:4000] + self.blob[-4000:])
 
     def test_single_page(self):
         self.assertEqual(len(re.findall(rb"/Type\s*/Page[^s]", self.blob)), 1)
