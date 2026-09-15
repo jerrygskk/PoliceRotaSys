@@ -234,7 +234,7 @@ class TestSeed(_DbTestCase):
         self.assertEqual(
             [tuple(r) for r in rows],
             [("大輪番", "rotate", "1-20"),
-             ("固定番", "fixed", "21-25"),
+             ("固定番", "fixed", "21-28"),
              ("幹部", "fixed", "A-F")],
         )
 

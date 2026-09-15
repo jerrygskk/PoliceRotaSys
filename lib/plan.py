@@ -182,13 +182,20 @@ def create_plan(
 def _assert_seeds_complete(
     conn: sqlite3.Connection, version_id: int, seeds: dict[int, dict[int, int]]
 ) -> None:
-    """配對必須落在該版規則的番組與格位範圍內。
+    """配對必須完整，且落在該版規則的番組與格位範圍內。
 
-    「沒配完不准按確定」是畫面的事；這裡擋的是**配錯**——指到不存在的番組
-    或超出格數的格位，那種錯月表上看不出來。
+    擋兩種錯：
+
+      **配錯** 指到不存在的番組、或超出格數的格位
+      **沒配完** 有格位沒人，或整個番組一個人都沒有
+
+    ⚠️ 「沒配完不准按確定」不只是畫面的事。按鈕反灰擋不住（CLAUDE.md §B），
+    真正的 gate 要在資料進資料庫的這一道——漏了一格的月表，印出來那一欄
+    就是空的，而承辦人不會知道是自己漏配還是程式壞了。
     """
     groups = {row["group_id"]: row for row in _group_rows(conn, version_id)}
     loaded = _groups_by_name(conn, version_id)
+
     for group_id, members in seeds.items():
         row = groups.get(group_id)
         if row is None:
@@ -200,6 +207,15 @@ def _assert_seeds_complete(
                     f"「{row['name']}」的格位 {slot_seq} 超出範圍"
                     f"（共 {cycle_len} 格）"
                 )
+
+    for group_id, row in groups.items():
+        cycle_len = loaded[row["name"]].cycle_len
+        taken = set(seeds.get(group_id, {}).values())
+        missing = sorted(set(range(1, cycle_len + 1)) - taken)
+        if missing:
+            shown = "、".join(str(seq) for seq in missing[:5])
+            more = f" 等 {len(missing)} 格" if len(missing) > 5 else ""
+            raise PlanError(f"「{row['name']}」還有格位沒配人：第 {shown} 格{more}")
 
 
 def delete_plan(conn: sqlite3.Connection, year: int, month: int) -> None:

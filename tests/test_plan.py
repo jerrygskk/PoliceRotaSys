@@ -41,12 +41,19 @@ class _PlanTestCase(unittest.TestCase):
         self.conn.close()
         self._temp.cleanup()
 
-    def rotate_seeds(self, count=18, start=1):
+    def full_seeds(self, rotate_start=1):
+        """配滿三組——create_plan 現在要求每一格都有人。"""
         return {
             self.gid["大輪番"]: {
-                self.members[i]: start + i for i in range(count)
-            }
+                self.members[i]: (rotate_start - 1 + i) % 20 + 1
+                for i in range(20)
+            },
+            self.gid["固定番"]: {self.members[20 + i]: i + 1 for i in range(8)},
+            self.gid["幹部"]: {self.members[28 + i]: i + 1 for i in range(6)},
         }
+
+    # 舊名保留，內容改為配滿。
+    rotate_seeds = full_seeds
 
     def make_plan(self, year=2026, month=10, origin=plan.ORIGIN_RESET, seeds=None):
         return plan.create_plan(
@@ -58,7 +65,9 @@ class _PlanTestCase(unittest.TestCase):
 class TestCreatePlan(_PlanTestCase):
     def test_plan_and_seeds_are_written(self):
         plan_id = self.make_plan()
-        self.assertEqual(len(plan.load_seeds(self.conn, plan_id)[self.gid["大輪番"]]), 18)
+        self.assertEqual(
+            len(plan.load_seeds(self.conn, plan_id)[self.gid["大輪番"]]), 20
+        )
 
     def test_duplicate_month_is_refused(self):
         self.make_plan()
@@ -75,17 +84,40 @@ class TestCreatePlan(_PlanTestCase):
 
     def test_slot_outside_the_cycle_is_refused(self):
         """⚠️ 指到不存在的格位，月表上看不出來，所以要在寫入前擋。"""
-        bad = {self.gid["大輪番"]: {self.members[0]: 99}}
+        bad = self.full_seeds()
+        bad[self.gid["大輪番"]][self.members[0]] = 99
         with self.assertRaisesRegex(plan.PlanError, "超出範圍"):
             self.make_plan(seeds=bad)
+
+    def test_a_group_with_a_gap_is_refused(self):
+        """⚠️ 漏一格，印出來那一欄就是空的，承辦人不知道是誰的錯。"""
+        short = self.full_seeds()
+        short[self.gid["大輪番"]].pop(self.members[0])
+        with self.assertRaisesRegex(plan.PlanError, "還有格位沒配人"):
+            self.make_plan(seeds=short)
+
+    def test_a_group_with_nobody_at_all_is_refused(self):
+        """一個人都沒配的番組過不了完整性檢查。"""
+        without = self.full_seeds()
+        without.pop(self.gid["幹部"])
+        with self.assertRaisesRegex(plan.PlanError, "幹部"):
+            self.make_plan(seeds=without)
+
+    def test_the_error_names_the_missing_slots(self):
+        short = self.full_seeds()
+        short[self.gid["固定番"]].pop(self.members[22])
+        with self.assertRaisesRegex(plan.PlanError, "第 3 格"):
+            self.make_plan(seeds=short)
 
     def test_group_from_another_version_is_refused(self):
         other = ruleset.copy_to_draft(self.conn, self.version, "另一版")
         other_gid = self.conn.execute(
             "SELECT group_id FROM RV_Group WHERE version_id = ? LIMIT 1", (other,)
         ).fetchone()[0]
+        bad = self.full_seeds()
+        bad[other_gid] = {self.members[0]: 1}
         with self.assertRaisesRegex(plan.PlanError, "不屬於這一版"):
-            self.make_plan(seeds={other_gid: {self.members[0]: 1}})
+            self.make_plan(seeds=bad)
 
     def test_delete_then_recreate(self):
         self.make_plan()
@@ -158,11 +190,10 @@ class TestChaining(_PlanTestCase):
             plan.chained_seeds(self.conn, 2026, 10, self.version)
 
     def test_fixed_group_seeds_survive_chaining_unchanged(self):
-        seeds = self.rotate_seeds()
-        seeds[self.gid["固定番"]] = {self.members[18]: 1, self.members[19]: 2}
+        seeds = self.full_seeds()
         self.make_plan(2026, 10, seeds=seeds)
         after = plan.chained_seeds(self.conn, 2026, 11, self.version)
-        self.assertEqual(after[self.gid["固定番"]], {self.members[18]: 1, self.members[19]: 2})
+        self.assertEqual(after[self.gid["固定番"]], seeds[self.gid["固定番"]])
 
     def test_a_full_chain_of_months_stays_continuous(self):
         """連產三個月，每次接續，番號不得亂跳。"""
@@ -189,10 +220,7 @@ class TestBuildSheetFor(_PlanTestCase):
             plan.build_sheet_for(self.conn, 2026, 10, UNIT)
 
     def test_sheet_has_a_block_per_group_plus_repeated_headers(self):
-        seeds = self.rotate_seeds()
-        seeds[self.gid["固定番"]] = {self.members[18]: 1}
-        seeds[self.gid["幹部"]] = {self.members[19]: 1}
-        self.make_plan(seeds=seeds)
+        self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
         self.assertEqual(
             [b.is_header for b in sheet.blocks],
@@ -207,9 +235,7 @@ class TestBuildSheetFor(_PlanTestCase):
 
     def test_fixed_block_is_blank_but_carries_the_code(self):
         """⚠️ 固定番區留白供手填，只印姓名與代碼。"""
-        seeds = self.rotate_seeds()
-        seeds[self.gid["固定番"]] = {self.members[18]: 1}
-        self.make_plan(seeds=seeds)
+        self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
         column = sheet.blocks[3].columns[0]
         self.assertEqual(column.code, "21")
@@ -226,8 +252,7 @@ class TestBuildSheetFor(_PlanTestCase):
         self.assertTrue(sheet.title.startswith(UNIT))
 
     def test_sheet_matches_the_paper_row_for_a_seed_of_12(self):
-        seeds = {self.gid["大輪番"]: {self.members[0]: 12}}
-        self.make_plan(seeds=seeds)
+        self.make_plan(seeds=self.full_seeds(rotate_start=12))
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
         column = sheet.blocks[1].columns[0]
         self.assertEqual(
