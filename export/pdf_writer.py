@@ -34,7 +34,9 @@ from lib.layout_model import (
 )
 
 RESOLUTION = 300          # dpi
-MARGIN_MM = 8.0
+# ⚠️ 邊界留 5mm 就好——留太多等於把欄寬白白讓掉。5mm 是一般雷射印表機
+# 的安全下限，再小會有印不到的風險。
+MARGIN_MM = 5.0
 
 # ⚠️ **字級由格子幾何算出來，不要寫死點數。**
 #

@@ -66,6 +66,11 @@
   寬，而「兩邊長一樣」正是當初抽出版面模型的理由。權重一律放
   `lib/layout_model.column_weight`，renderer 只能引用。
 
+- **LAY-12**: **邊界留太多，欄寬白白讓掉** → openpyxl 的 `page_margins` 預設
+  左右各 **0.75 吋（19mm）**，A3 橫式兩邊加起來吃掉 38mm，換算成欄寬等於少掉
+  一個多人的空間。明設 5mm（一般雷射印表機的安全下限）；PDF 的
+  `setPageMargins` 同步。
+
 #### XLS：openpyxl
 
 - **XLS-1**: **`page_setup.paperSize` 拿常數比對得到 `8 != '8'` 的假失敗**
