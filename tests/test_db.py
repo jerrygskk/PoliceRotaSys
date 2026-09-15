@@ -247,6 +247,19 @@ class TestSeed(_DbTestCase):
         ]
         self.assertEqual(rests, [6, 7, 13, 14, 19, 20])
 
+    def test_template_has_exactly_enough_people_for_the_default_rules(self):
+        """⚠️ 模板若配不滿自己的預設規則，第一次開起來就會產出有空欄的月表，
+        承辦人會以為程式壞了。改 SEED_GROUPS 時要回頭核對這個數字。"""
+        from lib.rota import expand_range
+
+        total = sum(len(expand_range(expr)) for _, _, expr, _ in db_seed.SEED_GROUPS)
+        self.assertEqual(len(db_seed.SEED_MEMBERS), total)
+
+    def test_template_has_no_duplicate_names(self):
+        self.assertEqual(
+            len(db_seed.SEED_MEMBERS), len(set(db_seed.SEED_MEMBERS))
+        )
+
     def test_default_unit_name_is_a_placeholder(self):
         """⚠️ public repo：種子不得含真實單位名。"""
         self.seed()
