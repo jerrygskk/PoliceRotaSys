@@ -14,7 +14,15 @@ import sqlite3
 from datetime import datetime
 
 from lib import ruleset
-from lib.layout_model import Entry, Section, Sheet, build_sheet
+from lib.db_utils import KEY_TITLE_FORMAT, get_setting
+from lib.layout_model import (
+    DEFAULT_TITLE_FORMAT,
+    Entry,
+    Section,
+    Sheet,
+    build_sheet,
+    parse_note,
+)
 from lib.rota import MODE_BLANK, MODE_ROTATE, Group, month_days, rota_month
 
 ORIGIN_CHAIN = "chain"
@@ -267,6 +275,7 @@ def build_sheet_for(
                     name=row["name"],
                     entries=tuple(Entry(name=slot.code) for slot in group.slots),
                     header_before=bool(row["header_before"]),
+                    note=parse_note(row["note"]),
                 )
             )
             blank_names.add(row["name"])
@@ -299,5 +308,7 @@ def build_sheet_for(
         )
 
     return build_sheet(
-        unit_name, year, month, sections, blank_sections=frozenset(blank_names)
+        unit_name, year, month, sections,
+        blank_sections=frozenset(blank_names),
+        title_format=get_setting(conn, KEY_TITLE_FORMAT, DEFAULT_TITLE_FORMAT),
     )

@@ -26,6 +26,9 @@ from lib.rota import Slot
 
 BLACK = "black"
 RED = "red"
+BLUE = "blue"
+
+NOTE_COLORS = {BLACK, RED, BLUE}
 
 WEEKDAY_LABELS = ("一", "二", "三", "四", "五", "六", "日")
 SATURDAY = 5
@@ -60,11 +63,47 @@ class Column:
 
 
 @dataclass(frozen=True)
+class NoteLine:
+    """註記的一行。紙本上那段班別說明是逐行不同顏色的，照抄。"""
+
+    text: str
+    color: str = BLACK
+
+
+def parse_note(raw: str) -> tuple[NoteLine, ...]:
+    """把設定裡的註記文字解析成逐行的 :class:`NoteLine`。
+
+    格式：一行一筆，``顏色|文字``；顏色省略時為黑色。例如::
+
+        blue|晚班:(1-5、16)
+        red|早班:(8-12、15)
+        black|中班(17.18)
+        red|限填1人
+    """
+    lines: list[NoteLine] = []
+    for raw_line in raw.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        head, sep, rest = line.partition("|")
+        if sep and head.strip() in NOTE_COLORS:
+            lines.append(NoteLine(rest.strip(), head.strip()))
+        else:
+            lines.append(NoteLine(line, BLACK))
+    return tuple(lines)
+
+
+@dataclass(frozen=True)
 class Block:
-    """一個左右並排的區塊。``name`` 為空者是重複的日期／星期欄。"""
+    """一個左右並排的區塊。``name`` 為空者是重複的日期／星期欄。
+
+    ``note`` 有值時要畫成**一個跨該區塊所有欄的合併格**，放在姓名列
+    （紙本上早／中／晚三欄上方那段班別說明就是這樣，逐行不同顏色）。
+    """
 
     name: str
     columns: tuple[Column, ...]
+    note: tuple[NoteLine, ...] = ()
 
     @property
     def is_header(self) -> bool:
@@ -102,6 +141,8 @@ class Section:
     entries: tuple[Entry, ...] = field(default_factory=tuple)
     # 這個區塊左邊要不要再放一次日期／星期欄。現行紙本不是每個區塊都有。
     header_before: bool = True
+    # 跨整個區塊的註記（逐行帶顏色），畫在姓名列的合併格裡。
+    note: tuple[NoteLine, ...] = ()
 
 
 def roc_year(year: int) -> int:
@@ -109,8 +150,15 @@ def roc_year(year: int) -> int:
     return year - 1911
 
 
-def sheet_title(unit_name: str, year: int, month: int) -> str:
-    return f"{unit_name} {roc_year(year)} 年 {month} 月份輪番休預訂計畫表"
+# 標題格式。⚠️ 現場用語會調（「輪休預定表」「輪番休預訂計畫表」各單位不同），
+# 所以做成 App_Settings 的 sheet_title_format，這裡只是預設值。
+DEFAULT_TITLE_FORMAT = "{unit} {roc} 年 {month} 月份輪休預定表"
+
+
+def sheet_title(
+    unit_name: str, year: int, month: int, fmt: str = DEFAULT_TITLE_FORMAT
+) -> str:
+    return fmt.format(unit=unit_name, roc=roc_year(year), month=month, year=year)
 
 
 def is_weekend(year: int, month: int, day: int) -> bool:
@@ -190,6 +238,7 @@ def build_sheet(
     sections: list[Section],
     rest_code: str = "00",
     blank_sections: frozenset[str] = frozenset(),
+    title_format: str = DEFAULT_TITLE_FORMAT,
 ) -> Sheet:
     """組出整張表。``year`` 為**西元**，標題自動轉民國。
 
@@ -200,22 +249,28 @@ def build_sheet(
         raise ValueError("至少要有一個區塊")
     day_count = calendar.monthrange(year, month)[1]
 
-    title = sheet_title(unit_name, year, month)
+    title = sheet_title(unit_name, year, month, title_format)
     blocks: list[Block] = [
         Block(name="", columns=(title_column(title, day_count),)),
     ]
     for section in sections:
         if section.header_before:
             blocks.append(_header_block(year, month, day_count))
-        kind = COL_BLANK if section.name in blank_sections else COL_MEMBER
-        blocks.append(
-            Block(
-                name=section.name,
-                columns=tuple(
-                    _member_column(entry, day_count, rest_code, kind)
-                    for entry in section.entries
-                ),
+        is_blank = section.name in blank_sections
+        kind = COL_BLANK if is_blank else COL_MEMBER
+        columns = tuple(
+            _member_column(entry, day_count, rest_code, kind)
+            for entry in section.entries
+        )
+        if is_blank and section.note:
+            # 有註記的空白區塊：註記佔掉姓名列（合併格），
+            # 各欄的小標題（早／中／晚）移到代碼列。
+            columns = tuple(
+                Column(kind=col.kind, header="", code=col.header, cells=col.cells)
+                for col in columns
             )
+        blocks.append(
+            Block(name=section.name, columns=columns, note=section.note)
         )
     # 最右邊一定再放一次，紙本如此。
     blocks.append(_header_block(year, month, day_count))

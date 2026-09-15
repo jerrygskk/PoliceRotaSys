@@ -23,7 +23,7 @@ from PySide6.QtGui import (
     QPdfWriter,
 )
 
-from lib.layout_model import COL_BLANK, COL_MEMBER, COL_TITLE, RED, Sheet
+from lib.layout_model import BLUE, COL_BLANK, COL_MEMBER, COL_TITLE, RED, Sheet
 
 RESOLUTION = 300          # dpi
 MARGIN_MM = 8.0
@@ -59,7 +59,11 @@ def _ensure_app() -> None:
 
 
 def _qcolor(color: str) -> QColor:
-    return QColor("#cc0000") if color == RED else QColor("#000000")
+    if color == RED:
+        return QColor("#cc0000")
+    if color == BLUE:
+        return QColor("#1f4e9c")
+    return QColor("#000000")
 
 
 def _font(pixel_size: float, bold: bool = False) -> QFont:
@@ -116,41 +120,100 @@ def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
     body_px = min(row_h * BODY_HEIGHT_RATIO, narrowest * BODY_WIDTH_RATIO)
 
     x = page.left()
-    for column, weight in zip(columns, weights):
-        width = unit_w * weight
-        if column.kind == COL_TITLE:
-            _paint_title_column(
-                painter, QRectF(x, page.top(), width, page.height()),
-                sheet.title, body_px,
-            )
-            x += width
-            continue
-
-        painter.setFont(_font(body_px))
-        header_rect = QRectF(x, page.top(), width, name_h)
-        # ⚠️ 欄很窄，多字標題橫著放會被切掉（「快打勤務」踩過）——一律直書。
-        if column.kind == COL_MEMBER or (
-            column.kind == COL_BLANK and len(column.header) > 1
-        ):
-            _paint_vertical_header(painter, header_rect, column, body_px, width)
-        else:
-            _paint_cell(painter, header_rect, column.header, column.header_color)
-        painter.setFont(_font(body_px))
-        _paint_cell(
-            painter,
-            QRectF(x, page.top() + name_h, width, code_h),
-            column.code,
-            "black",
+    for block in sheet.blocks:
+        block_w = sum(
+            unit_w * weight_of(column) for column in block.columns
         )
-        top = page.top() + name_h + code_h
-        for day, cell in enumerate(column.cells):
-            _paint_cell(
-                painter,
-                QRectF(x, top + day * row_h, width, row_h),
-                cell.text,
-                cell.color,
+        if block.note:
+            _paint_note(
+                painter, QRectF(x, page.top(), block_w, name_h), block.note, body_px
             )
-        x += width
+
+        for column in block.columns:
+            width = unit_w * weight_of(column)
+            if column.kind == COL_TITLE:
+                _paint_title_column(
+                    painter, QRectF(x, page.top(), width, page.height()),
+                    sheet.title, body_px,
+                )
+                x += width
+                continue
+
+            painter.setFont(_font(body_px))
+            if not block.note:
+                header_rect = QRectF(x, page.top(), width, name_h)
+                # 沒有小標題的欄（同仁專案臨檢、快打勤務），標題跨姓名列與
+                # 代碼列，照紙本的合併方式。
+                if not column.code and column.kind == COL_BLANK:
+                    header_rect = QRectF(x, page.top(), width, name_h + code_h)
+                # ⚠️ 欄很窄，多字標題橫著放會被切掉（「快打勤務」「日期」都
+                # 踩過）——只要超過一個字就直書。
+                if len(column.header) > 1:
+                    _paint_vertical_header(
+                        painter, header_rect, column, body_px, width
+                    )
+                else:
+                    _paint_cell(
+                        painter, header_rect, column.header, column.header_color
+                    )
+                if column.code or column.kind != COL_BLANK:
+                    _paint_cell(
+                        painter,
+                        QRectF(x, page.top() + name_h, width, code_h),
+                        column.code,
+                        column.header_color,
+                    )
+            else:
+                _paint_cell(
+                    painter,
+                    QRectF(x, page.top() + name_h, width, code_h),
+                    column.code,
+                    RED,
+                )
+
+            top = page.top() + name_h + code_h
+            for day, cell in enumerate(column.cells):
+                _paint_cell(
+                    painter,
+                    QRectF(x, top + day * row_h, width, row_h),
+                    cell.text,
+                    cell.color,
+                )
+            x += width
+
+
+def _paint_note(painter: QPainter, rect: QRectF, note, body_px: float) -> None:
+    """區塊註記：跨整個區塊的合併格，逐行不同顏色（照紙本）。"""
+    painter.setPen(QColor("#000000"))
+    painter.drawRect(rect)
+    if not note:
+        return
+    line_h = rect.height() / max(1, len(note))
+    usable = rect.width() * 0.92
+
+    # ⚠️ 字級要依**最長那一行**縮，只看行高會讓長行右邊被切掉
+    # （「晚班:(1-5、16)」的收尾括號就這樣不見過）。
+    size = min(body_px, line_h * 0.62)
+    longest = max(note, key=lambda line: len(line.text)).text
+    while size > 4:
+        painter.setFont(_font(size))
+        if painter.fontMetrics().horizontalAdvance(longest) <= usable:
+            break
+        size -= 0.5
+    painter.setFont(_font(size))
+
+    for index, line in enumerate(note):
+        painter.setPen(_qcolor(line.color))
+        painter.drawText(
+            QRectF(
+                rect.left() + rect.width() * 0.04,
+                rect.top() + index * line_h,
+                rect.width() * 0.92,
+                line_h,
+            ),
+            int(Qt.AlignLeft | Qt.AlignVCenter),
+            line.text,
+        )
 
 
 def _paint_title_column(

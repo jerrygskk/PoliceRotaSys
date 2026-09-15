@@ -233,17 +233,27 @@ class TestBuildSheetFor(_PlanTestCase):
         names = [b.name for b in sheet.blocks if b.name]
         self.assertEqual(
             names,
-            ["大輪番", "固定番", "同仁專案臨檢／請假", "幹部", "快打勤務"],
+            ["大輪番", "固定番", "同仁專案臨檢", "班別", "幹部", "快打勤務"],
         )
 
     def test_blank_groups_need_no_pairing_and_render_empty(self):
         """⚠️ 空白欄不配人，格子全空供手寫。"""
         self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
-        block = block_named(sheet, "同仁專案臨檢／請假")
-        self.assertEqual([c.header for c in block.columns], ["早", "中", "晚"])
+        block = block_named(sheet, "班別")
+        # 有註記的區塊：小標題移到代碼列，姓名列讓給跨欄的註記合併格。
+        self.assertEqual([c.code for c in block.columns], ["早", "中", "晚"])
+        self.assertEqual([line.text for line in block.note][0], "晚班:(1-5、16)")
+        self.assertEqual(block.note[0].color, "blue")
         for column in block.columns:
             self.assertTrue(all(cell.text == "" for cell in column.cells))
+
+    def test_a_blank_block_without_a_note_keeps_its_header(self):
+        self.make_plan()
+        sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
+        block = block_named(sheet, "同仁專案臨檢")
+        self.assertEqual(block.columns[0].header, "同仁專案臨檢")
+        self.assertEqual(block.note, ())
 
     def test_header_placement_follows_the_group_setting(self):
         """幹部與快打勤務左邊不再放日期欄，照現行紙本。"""

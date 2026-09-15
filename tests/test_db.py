@@ -235,7 +235,8 @@ class TestSeed(_DbTestCase):
             [tuple(r) for r in rows],
             [("大輪番", "rotate", "1-20"),
              ("固定番", "fixed", "21-28"),
-             ("同仁專案臨檢／請假", "blank", "早,中,晚"),
+             ("同仁專案臨檢", "blank", "同仁專案臨檢"),
+             ("班別", "blank", "早,中,晚"),
              ("幹部", "fixed", "A-F"),
              ("快打勤務", "blank", "快打勤務")],
         )
@@ -254,7 +255,7 @@ class TestSeed(_DbTestCase):
         承辦人會以為程式壞了。改 SEED_GROUPS 時要回頭核對這個數字。"""
         total = sum(
             db_seed._slot_count(mode, expr)
-            for _, mode, expr, _, _ in db_seed.SEED_GROUPS
+            for _, mode, expr, _, _, _ in db_seed.SEED_GROUPS
             if mode != "blank"          # 空白欄不配人
         )
         self.assertEqual(len(db_seed.SEED_MEMBERS), total)
@@ -263,6 +264,15 @@ class TestSeed(_DbTestCase):
         self.assertEqual(
             len(db_seed.SEED_MEMBERS), len(set(db_seed.SEED_MEMBERS))
         )
+
+    def test_the_shift_note_is_stored_with_the_ruleset(self):
+        """⚠️ 註記提到番號，換單位就不一樣，所以跟著規則版本凍結。"""
+        self.seed()
+        note = self.conn.execute(
+            "SELECT note FROM RV_Group WHERE name = '班別'"
+        ).fetchone()[0]
+        self.assertIn("早班", note)
+        self.assertIn("blue|", note)
 
     def test_default_unit_name_is_a_placeholder(self):
         """⚠️ public repo：種子不得含真實單位名。"""

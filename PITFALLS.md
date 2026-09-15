@@ -46,8 +46,14 @@
   列印寬高依權重分給各欄各列**，並夾在可讀性上下限之間；欄數多到連下限都排
   不下時才交給 fitToPage。容量以 `xlsx_writer.max_columns_per_page()` 查得，
   目前約 58 欄。回歸測試 `tests/test_export.py::TestAdaptiveWidth`。
+- **LAY-7**: **跨欄註記只按行高算字級，長行右邊被切掉** → 「晚班:(1-5、16)」
+  的收尾括號就這樣不見過。字級要依**最長那一行**的實際字寬縮
+  （`fontMetrics().horizontalAdvance`），不是只看行高。
+- **LAY-8**: **xlsx 想在一格裡放多種顏色的文字** → 一個儲存格只能有一種
+  `Font`，做不到。要多色必須走 RichText（`openpyxl.cell.rich_text.CellRichText`
+  ＋ `TextBlock`／`InlineFont`）。
 - **LAY-6**: **窄欄裡的多字標題被切掉** → 「快打勤務」四個字橫排塞在資料欄
-  寬裡必定切字。欄標題**只要超過一個字就直書**（姓名本來就是）。
+  寬裡必定切字；「日期」「星期」同理。欄標題**只要超過一個字就直書**。
 
 #### XLS：openpyxl
 

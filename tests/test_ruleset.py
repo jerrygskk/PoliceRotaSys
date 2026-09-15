@@ -163,15 +163,15 @@ class TestLoadGroups(_RulesetTestCase):
         groups = ruleset.load_groups(self.conn, self.draft)
         self.assertEqual(
             [g.name for g in groups],
-            ["大輪番", "固定番", "同仁專案臨檢／請假", "幹部", "快打勤務"],
+            ["大輪番", "固定番", "同仁專案臨檢", "班別", "幹部", "快打勤務"],
         )
         self.assertEqual(groups[0].cycle_len, 20)
-        self.assertEqual(groups[3].slots[0].code, "A")
+        self.assertEqual(groups[4].slots[0].code, "A")
 
     def test_blank_group_columns_come_from_literal_labels(self):
         """⚠️ blank 模式的 range_expr 是字面欄標題，不是範圍式。"""
         groups = ruleset.load_groups(self.conn, self.draft)
-        blank = next(g for g in groups if g.name == "同仁專案臨檢／請假")
+        blank = next(g for g in groups if g.name == "班別")
         self.assertEqual([s.code for s in blank.slots], ["早", "中", "晚"])
         self.assertTrue(all(not s.is_rest for s in blank.slots))
 

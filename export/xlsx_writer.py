@@ -15,7 +15,15 @@ from openpyxl.worksheet.page import PageMargins
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-from lib.layout_model import COL_BLANK, COL_MEMBER, COL_TITLE, RED, Sheet
+from lib.layout_model import (
+    BLUE,
+    COL_BLANK,
+    COL_MEMBER,
+    COL_TITLE,
+    RED,
+    Block,
+    Sheet,
+)
 
 FONT_NAME = "標楷體"
 FONT_SIZE = 12
@@ -68,6 +76,7 @@ ROW_CODE = 2
 ROW_FIRST_DAY = 3
 
 _RED = "FFCC0000"
+_BLUE = "FF1F4E9C"
 _BLACK = "FF000000"
 
 _THIN = Side(style="thin", color=_BLACK)
@@ -75,6 +84,7 @@ _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
 _CENTER = Alignment(horizontal="center", vertical="center")
 # 姓名直書（Excel 的 textRotation 255 ＝ 直排）。
 _VERTICAL = Alignment(horizontal="center", vertical="center", textRotation=255)
+_NOTE = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
 
 def _width_to_points(width: float) -> float:
@@ -121,7 +131,11 @@ def max_columns_per_page() -> int:
 
 
 def _argb(color: str) -> str:
-    return _RED if color == RED else _BLACK
+    if color == RED:
+        return _RED
+    if color == BLUE:
+        return _BLUE
+    return _BLACK
 
 
 
@@ -149,6 +163,36 @@ def _setup_page(ws: Worksheet, sheet: Sheet) -> None:
         ws.column_dimensions[get_column_letter(index)].width = width
 
 
+def _write_note(ws: Worksheet, first: int, block: Block) -> None:
+    """區塊註記：跨該區塊所有欄的合併格，逐行不同顏色。
+
+    ⚠️ openpyxl 一個儲存格只能有一種字型，**做不到一格內多色**。紙本上那段
+    班別說明是逐行不同色的，所以在 xlsx 走 RichText（``CellRichText``），
+    才能照抄顏色。
+    """
+    from openpyxl.cell.rich_text import CellRichText, TextBlock
+    from openpyxl.cell.text import InlineFont
+
+    last = first + len(block.columns) - 1
+    parts = []
+    for i, line in enumerate(block.note):
+        text = line.text if i == len(block.note) - 1 else line.text + "\n"
+        parts.append(
+            TextBlock(
+                InlineFont(rFont=FONT_NAME, sz=FONT_SIZE, color=_argb(line.color)),
+                text,
+            )
+        )
+    cell = ws.cell(row=ROW_NAME, column=first, value=CellRichText(*parts))
+    cell.alignment = _NOTE
+    cell.border = _BORDER
+    if last > first:
+        ws.merge_cells(
+            start_row=ROW_NAME, start_column=first,
+            end_row=ROW_NAME, end_column=last,
+        )
+
+
 def _write_title_column(ws: Worksheet, index: int, sheet: Sheet) -> None:
     """最左邊那一整欄：直書標題，從姓名列一路合併到最後一天。"""
     last = ROW_FIRST_DAY - 1 + sheet.day_count
@@ -161,22 +205,39 @@ def _write_title_column(ws: Worksheet, index: int, sheet: Sheet) -> None:
     )
 
 
-def _write_column(ws: Worksheet, index: int, column, day_count: int) -> None:
-    header = ws.cell(row=ROW_NAME, column=index, value=column.header)
-    header.font = Font(
-        name=FONT_NAME, size=FONT_SIZE, color=_argb(column.header_color), bold=True
-    )
-    # ⚠️ 欄很窄，多字標題橫著放會被切掉（「快打勤務」踩過）——一律直書。
-    vertical = column.kind == COL_MEMBER or (
-        column.kind == COL_BLANK and len(column.header) > 1
-    )
-    header.alignment = _VERTICAL if vertical else _CENTER
-    header.border = _BORDER
+def _write_column(
+    ws: Worksheet, index: int, column, day_count: int, skip_name: bool = False
+) -> None:
+    """``skip_name`` 為真時不畫姓名列——那一格被區塊註記的合併格佔走了。"""
+    if not skip_name:
+        header = ws.cell(row=ROW_NAME, column=index, value=column.header or None)
+        header.font = Font(
+            name=FONT_NAME, size=FONT_SIZE,
+            color=_argb(column.header_color), bold=True,
+        )
+        # ⚠️ 欄很窄，多字標題橫著放會被切掉（「快打勤務」「日期」都踩過）
+        # ——只要超過一個字就直書。
+        header.alignment = _VERTICAL if len(column.header) > 1 else _CENTER
+        header.border = _BORDER
 
-    code = ws.cell(row=ROW_CODE, column=index, value=column.code or None)
-    code.font = Font(name=FONT_NAME, size=FONT_SIZE)
-    code.alignment = _CENTER
-    code.border = _BORDER
+        # 沒有小標題的欄（同仁專案臨檢、快打勤務），標題跨姓名列與代碼列，
+        # 照紙本的合併方式。
+        if not column.code and column.kind in (COL_BLANK, COL_TITLE):
+            ws.merge_cells(
+                start_row=ROW_NAME, start_column=index,
+                end_row=ROW_CODE, end_column=index,
+            )
+        else:
+            code = ws.cell(row=ROW_CODE, column=index, value=column.code or None)
+            code.font = Font(name=FONT_NAME, size=FONT_SIZE,
+                             color=_argb(column.header_color))
+            code.alignment = _CENTER
+            code.border = _BORDER
+    else:
+        code = ws.cell(row=ROW_CODE, column=index, value=column.code or None)
+        code.font = Font(name=FONT_NAME, size=FONT_SIZE, color=_RED)
+        code.alignment = _CENTER
+        code.border = _BORDER
 
     for day in range(day_count):
         model = column.cells[day]
@@ -201,11 +262,18 @@ def write_sheet(sheet: Sheet, path: str) -> None:
     for day in range(sheet.day_count):
         ws.row_dimensions[ROW_FIRST_DAY + day].height = row_height
 
-    for index, column in enumerate(columns, start=1):
-        if column.kind == COL_TITLE:
-            _write_title_column(ws, index, sheet)
-        else:
-            _write_column(ws, index, column, sheet.day_count)
+    index = 1
+    for block in sheet.blocks:
+        if block.note:
+            _write_note(ws, index, block)
+        for column in block.columns:
+            if column.kind == COL_TITLE:
+                _write_title_column(ws, index, sheet)
+            else:
+                _write_column(
+                    ws, index, column, sheet.day_count, skip_name=bool(block.note)
+                )
+            index += 1
 
     # 凍結窗格：捲動時姓名列與最左邊的標題／日期欄留在畫面上。
     ws.freeze_panes = ws.cell(row=ROW_FIRST_DAY, column=4)

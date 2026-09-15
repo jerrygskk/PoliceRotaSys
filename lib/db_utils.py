@@ -8,6 +8,7 @@ from contextlib import contextmanager
 # ⚠️ 新增 key 時 DEVELOPER §7 的表要同步補一列。
 KEY_UNIT_NAME = "unit_name"
 KEY_OUTPUT_DIR = "output_dir"
+KEY_TITLE_FORMAT = "sheet_title_format"
 KEY_SCHEMA_VERSION = "schema_version"
 
 

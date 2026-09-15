@@ -14,7 +14,8 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
-from lib.db_utils import KEY_OUTPUT_DIR, KEY_UNIT_NAME
+from lib.db_utils import KEY_OUTPUT_DIR, KEY_TITLE_FORMAT, KEY_UNIT_NAME
+from lib.layout_model import DEFAULT_TITLE_FORMAT
 from lib.rota import MODE_BLANK, blank_labels, expand_range
 
 # ⚠️ 全部是虛構姓名，不得替換成真實同仁。
@@ -40,18 +41,30 @@ SEED_MEMBERS = (
 # ⚠️ blank 模式的 range_expr 是**逗號分隔的字面欄標題**，不是範圍式。
 # 那幾欄有標題有格線但格子全空，供承辦人手寫（紙本上是「休」「補」
 # 「通補」那些），不配人也不算番號。
+# 紙本上早／中／晚三欄的上方那段班別說明，逐行不同顏色，照抄。
+# ⚠️ 內容提到的番號（1-5、16 等）與輪番規則綁在一起，換單位就不一樣，
+# 所以它存在規則版本裡、跟著一起凍結，不是寫死在程式。
+SEED_SHIFT_NOTE = (
+    "blue|晚班:(1-5、16)\n"
+    "red|早班:(8-12、15)\n"
+    "black|中班(17.18)\n"
+    "red|限填1人"
+)
+
 SEED_GROUPS = (
-    # (名稱, 模式, 範圍式／欄標題, 休假格位, 左邊要不要再放日期／星期欄)
-    ("大輪番", "rotate", "1-20", (6, 7, 13, 14, 19, 20), True),
-    ("固定番", "fixed", "21-28", (), True),
-    ("同仁專案臨檢／請假", "blank", "早,中,晚", (), True),
-    ("幹部", "fixed", "A-F", (), False),
-    ("快打勤務", "blank", "快打勤務", (), False),
+    # (名稱, 模式, 範圍式／欄標題, 休假格位, 左邊要不要放日期／星期欄, 註記)
+    ("大輪番", "rotate", "1-20", (6, 7, 13, 14, 19, 20), True, ""),
+    ("固定番", "fixed", "21-28", (), True, ""),
+    ("同仁專案臨檢", "blank", "同仁專案臨檢", (), True, ""),
+    ("班別", "blank", "早,中,晚", (), False, SEED_SHIFT_NOTE),
+    ("幹部", "fixed", "A-F", (), False, ""),
+    ("快打勤務", "blank", "快打勤務", (), False, ""),
 )
 
 DEFAULT_SETTINGS = {
     KEY_UNIT_NAME: "○○分局○○派出所",
     KEY_OUTPUT_DIR: "",
+    KEY_TITLE_FORMAT: DEFAULT_TITLE_FORMAT,
 }
 
 
@@ -104,12 +117,14 @@ def _seed_draft(conn: sqlite3.Connection, ruleset_name: str) -> None:
     )
     version_id = cur.lastrowid
 
-    for order, (name, mode, expr, rests, header) in enumerate(SEED_GROUPS, start=1):
+    for order, (name, mode, expr, rests, header, note) in enumerate(
+        SEED_GROUPS, start=1
+    ):
         cur = conn.execute(
             "INSERT INTO RV_Group"
             "(version_id, name, mode, range_expr, rest_code, header_before, "
-            "sort_order) VALUES (?, ?, ?, ?, '00', ?, ?)",
-            (version_id, name, mode, expr, 1 if header else 0, order),
+            "note, sort_order) VALUES (?, ?, ?, ?, '00', ?, ?, ?)",
+            (version_id, name, mode, expr, 1 if header else 0, note, order),
         )
         group_id = cur.lastrowid
         rest_set = set(rests)
