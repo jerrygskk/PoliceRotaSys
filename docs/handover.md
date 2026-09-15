@@ -26,24 +26,59 @@
 - PDF 走 Qt 的 `QPdfWriter`，**不引入 reportlab**
 - ⚠️ **這是 public repo**：真實姓名／單位名一律不得入庫
 
-## 2. 接手步驟
+## 2. 本機要裝什麼
 
-```bash
+### 直譯器
+
+用 PoliceDocSys 那支**正式 gate 的系統 Python**：
+
+```
+C:\Users\user\AppData\Local\Programs\Python\Python312\python.exe
+```
+
+⚠️ **不要用 Codex runtime 那支**（`.cache\codex-runtimes\...`），它沒有 pytest
+與 PySide6，跑不了測試。
+
+### 套件
+
+```powershell
 git clone https://github.com/jerrygskk/PoliceRotaSys
 cd PoliceRotaSys
-pip install -r requirements-dev.txt
+python -m pip install -r requirements-dev.txt
+```
 
-# 全套件（PDF 測試需要 Qt；Windows 直接跑即可）
+裝進去的東西：
+
+| 套件 | 版本 | 用途 |
+|---|---|---|
+| `PySide6` | 6.11.2 | **產品 runtime**：GUI 與 PDF 輸出（`QPdfWriter`） |
+| `openpyxl` | 3.1.5 | **產品 runtime**：xlsx 輸出 |
+| `pytest` | 9.1.1 | 測試 |
+| `pytest-qt` | 4.5.0 | 之後寫 GUI pilot 要用 |
+| `pyinstaller` | 6.16.0 | `--onefile` 打包 |
+
+⚠️ **前兩個是封閉清單**（`requirements.txt`）。要往裡面加東西一律先問維護者，
+分界由 `tests/test_environment_contract.py` 守著。
+
+### 不用另外裝的
+
+- **標楷體**：Windows 內建（`DFKai-SB`），PDF 就是用它。
+  ⚠️ 雲端容器**沒有**這支字型，所以我那邊算的字寬不準——版面最終要上機定案。
+- **Qt 系統函式庫**：只有 Linux／無 GUI 環境才要（`libegl1` 那一串，見
+  `PITFALLS.md` QT-1），Windows 不必。
+- **Excel**：測試不需要，但**版面驗收一定要**（縮放比例、頁數只有 Excel 看得到）。
+
+### 跑測試
+
+```powershell
 python -m unittest discover -s tests -t .
-
-# push 前必跑
-python -m unittest tests.test_no_pii
+python -m unittest tests.test_no_pii        # push 前必跑
 ```
 
 ⚠️ `-t .` 不可省，否則 `tests` 被當頂層目錄、`tests/__init__.py` 不會載入。
 
 ⚠️ 個資防呆預設會 **skip**。要啟用：
-`cp tests/pii_denylist.local.txt.example tests/pii_denylist.local.txt`，
+`copy tests\pii_denylist.local.txt.example tests\pii_denylist.local.txt`，
 把要防的真名填進去（該檔已 gitignore，刻意不入庫）。
 
 ## 3. 已完成（219 項測試通過，全在 `main` 上）

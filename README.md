@@ -33,16 +33,20 @@
 - runtime 相依為封閉清單：`PySide6`、`openpyxl`
 
 ```bash
-pip install -r requirements-dev.txt
+python -m pip install -r requirements-dev.txt
 
-# 全套件（PDF 測試需要 offscreen）
-QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -t .
+# 全套件（⚠️ `-t .` 不可省）
+python -m unittest discover -s tests -t .
 
 # push 前必跑
 python -m unittest tests.test_no_pii
 ```
 
-⚠️ 離線環境跑 PDF 測試前需要 Qt 的系統函式庫，見 `PITFALLS.md` QT-1。
+⚠️ Linux／無 GUI 環境跑 PDF 測試要多兩件事，Windows 不必：設
+`QT_QPA_PLATFORM=offscreen`，並安裝 Qt 的系統函式庫（`libegl1` 等，
+PySide6 的 wheel 不含）。見 `PITFALLS.md` QT-1。
+
+接手開發請先讀 `docs/handover.md`。
 
 ## 相關
 
