@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from lib import db_schema, db_seed, db_utils, ruleset
+from lib.rota import MODE_ROTATE
 
 
 class _DbTestCase(unittest.TestCase):
@@ -294,6 +295,65 @@ class TestSettings(_DbTestCase):
         db_utils.set_setting(self.conn, "k", "b")
         self.assertEqual(db_utils.get_setting(self.conn, "k"), "b")
 
+
+
+class TestCrossVersionIsBlocked(_DbTestCase):
+    """⚠️ 配對必須配到「這個月所用那一版」的群組；槽位的版本也要與群組一致。
+
+    原本只有 plan._assert_seeds_complete 在程式端檢查，繞過程式直接寫就會產生
+    一張規則版本與配對對不上的月表，印出來還看不出異常（2026-09-16 檢視發現）。
+    """
+
+    def setUp(self):
+        super().setUp()
+        db_seed.seed_all(self.conn)
+        self.draft = self.conn.execute(
+            "SELECT version_id FROM Ruleset_Version WHERE status = '草稿'"
+        ).fetchone()[0]
+        self.other = ruleset.create_draft(
+            self.conn,
+            self.conn.execute("SELECT ruleset_id FROM Ruleset").fetchone()[0],
+            "另一版")
+        self.other_group = ruleset.add_group(
+            self.conn, self.other, "他版群組", MODE_ROTATE, "1-3")
+        self.member = self.conn.execute("SELECT member_id FROM Member LIMIT 1").fetchone()[0]
+        self.conn.execute(
+            "INSERT INTO Month_Plan(year, month, ruleset_version_id, origin, created_at)"
+            " VALUES (2026, 10, ?, 'reset', 'now')", (self.draft,))
+        self.plan_id = self.conn.execute("SELECT plan_id FROM Month_Plan").fetchone()[0]
+
+    def _seed(self, group_id):
+        self.conn.execute(
+            "INSERT INTO Month_Seed(plan_id, rv_group_id, member_id, row_no, slot_seq)"
+            " VALUES (?, ?, ?, 1, 1)", (self.plan_id, group_id, self.member))
+
+    def test_seed_from_another_version_is_refused(self):
+        with self.assertRaisesRegex(sqlite3.DatabaseError, "不屬於這個月的規則版本"):
+            self._seed(self.other_group)
+
+    def test_seed_from_the_same_version_is_allowed(self):
+        same = self.conn.execute(
+            "SELECT group_id FROM RV_Group WHERE version_id = ? LIMIT 1", (self.draft,)
+        ).fetchone()[0]
+        self._seed(same)          # 不應丟例外
+
+    def test_slot_version_must_match_its_group(self):
+        with self.assertRaisesRegex(sqlite3.DatabaseError, "與所屬群組不一致"):
+            self.conn.execute(
+                "INSERT INTO RV_Slot(version_id, group_id, seq, is_rest) VALUES (?, ?, 99, 0)",
+                (self.draft, self.other_group))
+
+    def test_draft_limit_comes_from_one_constant(self):
+        """trigger 與 lib/ruleset.py 共用 db_schema.MAX_DRAFTS。"""
+        self.assertEqual(ruleset.MAX_DRAFTS, db_schema.MAX_DRAFTS)
+        for i in range(db_schema.MAX_DRAFTS + 2):
+            try:
+                ruleset.create_draft(self.conn, 1, f"草稿{i}")
+            except ruleset.RulesetError as exc:
+                self.assertIn(str(db_schema.MAX_DRAFTS), str(exc))
+                break
+        else:
+            self.fail("草稿上限沒有生效")
 
 if __name__ == "__main__":
     unittest.main()

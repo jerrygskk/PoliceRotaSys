@@ -10,6 +10,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
+from lib.db_schema import MAX_DRAFTS
 from lib.rota import (
     MODE_BLANK, MODE_FIXED, MODE_ROTATE, MODES, Group, GroupError, Slot,
     blank_labels, expand_range, validate_groups,
@@ -17,7 +18,7 @@ from lib.rota import (
 
 DRAFT = "草稿"
 ACTIVE = "啟用"
-MAX_DRAFTS = 3
+# 上限與 trigger 同一來源，見 lib/db_schema.py
 
 
 class RulesetError(RuntimeError):

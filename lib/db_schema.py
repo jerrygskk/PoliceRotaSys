@@ -16,6 +16,10 @@ import sqlite3
 
 SCHEMA_VERSION = 1
 
+# 草稿份數上限（DEVELOPER §3）。⚠️ 單一來源：trigger 與 lib/ruleset.py 都讀這裡，
+# 不要在任一邊另寫數字——只改一邊時另一邊不會跟著動。
+MAX_DRAFTS = 3
+
 TABLES = (
     # ---- 設定區 ---------------------------------------------------------
     """CREATE TABLE IF NOT EXISTS App_Settings (
@@ -145,10 +149,28 @@ WHEN OLD.status = '啟用'
       OR NEW.activated_at IS NOT OLD.activated_at)
 BEGIN SELECT RAISE(ABORT, '已啟用的規則不可修改'); END""",
     # 草稿最多 3 份（DEVELOPER §3）。所長要挑方案，但不必無限多份。
-    """CREATE TRIGGER IF NOT EXISTS trg_draft_limit
+    f"""CREATE TRIGGER IF NOT EXISTS trg_draft_limit
 BEFORE INSERT ON Ruleset_Version WHEN NEW.status = '草稿'
- AND (SELECT COUNT(*) FROM Ruleset_Version WHERE status = '草稿') >= 3
-BEGIN SELECT RAISE(ABORT, '草稿最多 3 份，請先刪掉不要的'); END""",
+ AND (SELECT COUNT(*) FROM Ruleset_Version WHERE status = '草稿') >= {MAX_DRAFTS}
+BEGIN SELECT RAISE(ABORT, '草稿最多 {MAX_DRAFTS} 份，請先刪掉不要的'); END""",
+    # ⚠️ 槽位的 version_id 是冗餘欄位（可由所屬群組推出），而上面那幾條鎖正是
+    # 看它判斷版本。一旦與群組的版本不一致，鎖會判到錯的版本，故明文擋住。
+    """CREATE TRIGGER IF NOT EXISTS trg_rv_slot_version_match
+BEFORE INSERT ON RV_Slot
+WHEN NEW.version_id <> (SELECT version_id FROM RV_Group WHERE group_id = NEW.group_id)
+BEGIN SELECT RAISE(ABORT, '槽位的規則版本與所屬群組不一致'); END""",
+    """CREATE TRIGGER IF NOT EXISTS trg_rv_slot_version_match_update
+BEFORE UPDATE ON RV_Slot
+WHEN NEW.version_id <> (SELECT version_id FROM RV_Group WHERE group_id = NEW.group_id)
+BEGIN SELECT RAISE(ABORT, '槽位的規則版本與所屬群組不一致'); END""",
+    # ⚠️ 配對必須配到「這個月所用那一版」的群組。原本只有程式在寫入前檢查
+    # （plan._assert_seeds_complete），繞過程式直接寫就會產生一張規則版本與
+    # 配對對不上的月表，而且印出來看不出異常。
+    """CREATE TRIGGER IF NOT EXISTS trg_month_seed_version_match
+BEFORE INSERT ON Month_Seed
+WHEN (SELECT version_id FROM RV_Group WHERE group_id = NEW.rv_group_id)
+     <> (SELECT ruleset_version_id FROM Month_Plan WHERE plan_id = NEW.plan_id)
+BEGIN SELECT RAISE(ABORT, '配對的群組不屬於這個月的規則版本'); END""",
     # 事實區只新增不修改：要重產就整筆刪掉重來，刪除是明確動作。
     """CREATE TRIGGER IF NOT EXISTS trg_month_plan_no_update
 BEFORE UPDATE ON Month_Plan
