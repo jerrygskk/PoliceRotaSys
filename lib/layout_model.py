@@ -62,6 +62,27 @@ class Column:
         return self.kind in (COL_DATE, COL_WEEKDAY)
 
 
+# 欄寬權重。⚠️ 放在版面模型裡是刻意的——兩個 renderer 必須用同一份，
+# 否則 Excel 印出來跟 PDF 會不一樣寬。
+#
+# 手寫區（固定番、幹部、專案臨檢、早中晚、快打勤務）給得比程式填滿的欄寬，
+# 因為那些格子是要用筆畫假的；日期／星期只放一兩個字，給最窄。
+WEIGHT_TITLE = 1.0
+WEIGHT_HEADER = 0.72     # 日期／星期
+WEIGHT_FILLED = 1.0      # 程式填滿的輪番欄
+WEIGHT_BLANK = 1.3       # 留白供手寫的欄
+
+
+def column_weight(column: "Column") -> float:
+    if column.kind == COL_TITLE:
+        return WEIGHT_TITLE
+    if column.kind in (COL_DATE, COL_WEEKDAY):
+        return WEIGHT_HEADER
+    if all(not cell.text for cell in column.cells):
+        return WEIGHT_BLANK
+    return WEIGHT_FILLED
+
+
 @dataclass(frozen=True)
 class NoteLine:
     """註記的一行。紙本上那段班別說明是逐行不同顏色的，照抄。"""

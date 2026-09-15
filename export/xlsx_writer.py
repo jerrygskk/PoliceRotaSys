@@ -23,6 +23,7 @@ from lib.layout_model import (
     RED,
     Block,
     Sheet,
+    column_weight,
 )
 
 FONT_NAME = "標楷體"
@@ -62,10 +63,8 @@ PRINTABLE_H_PT = 841.92 - 2 * 28.8
 MIN_COL_WIDTH = 3.0
 MAX_COL_WIDTH = 10.0
 
-# 欄寬權重：日期／星期欄與標題欄比資料欄寬一點。
-TITLE_COL_WEIGHT = 1.0
-HEADER_COL_WEIGHT = 0.85
-MEMBER_COL_WEIGHT = 1.0
+# ⚠️ 欄寬權重在 lib/layout_model.column_weight，與 pdf_writer 共用——
+# 兩邊用不同的權重，Excel 印出來就會跟 PDF 不一樣寬。
 
 # ⚠️ **姓名列高度是算出來的，不能寫死。**
 #
@@ -129,22 +128,38 @@ def _points_to_width(points: float) -> float:
     return (points / 0.75 - 5) / 7
 
 
-def _column_weight(kind: str) -> float:
-    if kind == COL_TITLE:
-        return TITLE_COL_WEIGHT
-    if kind in (COL_MEMBER, COL_BLANK):
-        return MEMBER_COL_WEIGHT
-    return HEADER_COL_WEIGHT
-
-
 def column_widths(sheet: Sheet) -> list[float]:
-    """把可列印寬度依權重分給各欄，並夾在上下限之間。"""
-    weights = [_column_weight(column.kind) for column in sheet.columns]
-    per_weight = PRINTABLE_W_PT / sum(weights)
-    return [
-        min(MAX_COL_WIDTH, max(MIN_COL_WIDTH, _points_to_width(per_weight * w)))
-        for w in weights
-    ]
+    """把可列印寬度依權重分給各欄，並夾在上下限之間。
+
+    ⚠️ **夾到上下限的欄，差額要還給其他欄。**
+    第一版夾完就算了，結果窄欄被夾寬時總寬會超出頁寬——40 人時就這樣多出
+    3.6pt、整張表被 fitToPage 白白縮小一次。這裡改成反覆重分配：每輪把已經
+    夾住的欄固定下來，剩下的寬度再按權重分給還沒夾住的欄，直到穩定。
+    """
+    weights = [column_weight(column) for column in sheet.columns]
+    widths: list[float | None] = [None] * len(weights)
+
+    remaining_pt = PRINTABLE_W_PT
+    while True:
+        free = [i for i, w in enumerate(widths) if w is None]
+        if not free:
+            break
+        total_weight = sum(weights[i] for i in free)
+        per_weight = remaining_pt / total_weight
+        clamped = False
+        for i in free:
+            ideal = _points_to_width(per_weight * weights[i])
+            bounded = min(MAX_COL_WIDTH, max(MIN_COL_WIDTH, ideal))
+            if bounded != ideal:
+                widths[i] = bounded
+                remaining_pt -= _width_to_points(bounded)
+                clamped = True
+        if not clamped:
+            for i in free:
+                widths[i] = _points_to_width(per_weight * weights[i])
+            break
+
+    return [w for w in widths]
 
 
 def day_row_height(day_count: int, name_height: float = MIN_NAME_ROW_HEIGHT) -> float:

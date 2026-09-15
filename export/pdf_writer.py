@@ -23,7 +23,15 @@ from PySide6.QtGui import (
     QPdfWriter,
 )
 
-from lib.layout_model import BLUE, COL_BLANK, COL_MEMBER, COL_TITLE, RED, Sheet
+from lib.layout_model import (
+    BLUE,
+    COL_BLANK,
+    COL_MEMBER,
+    COL_TITLE,
+    RED,
+    Sheet,
+    column_weight,
+)
 
 RESOLUTION = 300          # dpi
 MARGIN_MM = 8.0
@@ -43,10 +51,7 @@ BODY_WIDTH_RATIO = 0.42    # 兩字寬的代碼要塞進格寬
 # ⚠️ 不要只寫一支——沒有那支字型時 Qt 會靜默換成系統預設，字寬全走鐘。
 FONT_FAMILIES = ("標楷體", "DFKai-SB", "Microsoft JhengHei", "Noto Sans CJK TC")
 
-# 欄寬權重：日期／星期欄比姓名欄寬一點。
-TITLE_COL_WEIGHT = 1.1
-HEADER_COL_WEIGHT = 1.25
-MEMBER_COL_WEIGHT = 1.0
+# ⚠️ 欄寬權重在 lib/layout_model.column_weight，兩個 renderer 共用。
 
 # ⚠️ 沒有橫向標題列——標題是最左邊那一整欄直書（照紙本）。
 NAME_RATIO = 0.085
@@ -105,13 +110,7 @@ def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
     body_h = page.height() - name_h - code_h
     row_h = body_h / sheet.day_count
 
-    def weight_of(column) -> float:
-        if column.kind == COL_TITLE:
-            return TITLE_COL_WEIGHT
-        if column.kind in (COL_MEMBER, COL_BLANK):
-            return MEMBER_COL_WEIGHT
-        return HEADER_COL_WEIGHT
-
+    weight_of = column_weight
     weights = [weight_of(column) for column in columns]
     unit_w = page.width() / sum(weights)
 

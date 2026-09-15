@@ -232,6 +232,36 @@ class TestAdaptiveWidth(unittest.TestCase):
         for width in xlsx_writer.column_widths(self.sheet_with(60)):
             self.assertGreaterEqual(width, xlsx_writer.MIN_COL_WIDTH)
 
+    def test_write_in_columns_are_wider_than_the_date_columns(self):
+        """⚠️ 手寫區要留得下筆跡，日期／星期只放一兩個字，給最窄。"""
+        from lib.layout_model import column_weight
+
+        sheet = self.sheet_with(20)
+        widths = xlsx_writer.column_widths(sheet)
+        date_w = next(
+            w for w, c in zip(widths, sheet.columns) if c.kind == "date"
+        )
+        duty_w = next(
+            w for w, c in zip(widths, sheet.columns) if c.kind == "member"
+        )
+        self.assertLess(date_w, duty_w)
+
+    def test_clamped_columns_give_their_difference_back(self):
+        """⚠️ 夾到上下限的欄，差額要還給其他欄。
+
+        第一版夾完就算了，窄欄被夾寬時總寬會超出頁寬——40 人時多出 3.6pt，
+        整張表就被 fitToPage 白白縮小一次。
+        """
+        for people in (36, 40, 45):
+            with self.subTest(people=people):
+                sheet = self.sheet_with(people)
+                self.assertTrue(xlsx_writer.fits_in_one_page(sheet))
+                self.assertAlmostEqual(
+                    self.total_points(sheet),
+                    xlsx_writer.PRINTABLE_W_PT,
+                    delta=2,
+                )
+
     def test_columns_never_go_above_the_maximum(self):
         for width in xlsx_writer.column_widths(self.sheet_with(3)):
             self.assertLessEqual(width, xlsx_writer.MAX_COL_WIDTH)
