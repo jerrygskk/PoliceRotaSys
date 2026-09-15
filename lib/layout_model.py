@@ -55,7 +55,7 @@ class Column:
     header: str = ""          # 姓名，或「日期」「星期」
     code: str = ""            # 固定番／幹部的代碼，印在姓名下
     header_color: str = BLACK
-    weight: float = 1.0       # 相對欄寬，來自所屬番組的設定
+    weight: float = 1.0       # 相對欄寬，來自所屬群組的設定
     cells: tuple[Cell, ...] = ()
 
     @property
@@ -66,12 +66,12 @@ class Column:
 # 欄寬權重。⚠️ 放在版面模型裡是刻意的——兩個 renderer 必須用同一份，
 # 否則 Excel 印出來跟 PDF 會不一樣寬。
 #
-# ⚠️ **每個番組的權重是設定（`RV_Group.col_weight`），不是由欄的種類推的。**
+# ⚠️ **每個群組的權重是設定（`RV_Group.col_weight`），不是由欄的種類推的。**
 # 第一版靠「格子是不是空的」去猜，結果所有手寫欄一律同寬——但固定番、劃假區、
 # 幹部要寫的東西不一樣多，現場要能分別調。
 WEIGHT_TITLE = 1.0
 WEIGHT_HEADER = 1.0      # 日期／星期
-WEIGHT_DEFAULT = 1.0     # 番組沒指定時
+WEIGHT_DEFAULT = 1.0     # 群組沒指定時
 
 
 def column_weight(column: "Column") -> float:

@@ -168,7 +168,7 @@ def activate(conn: sqlite3.Connection, version_id: int) -> int:
     if not conn.execute(
         "SELECT 1 FROM RV_Group WHERE version_id = ? LIMIT 1", (version_id,)
     ).fetchone():
-        raise RulesetError("這份草稿沒有任何番組，不能啟用")
+        raise RulesetError("這份草稿沒有任何群組，不能啟用")
     try:
         validate_groups(load_groups(conn, version_id))
     except GroupError as exc:
@@ -259,7 +259,7 @@ def _group_row(conn: sqlite3.Connection, group_id: int) -> sqlite3.Row:
         "SELECT * FROM RV_Group WHERE group_id = ?", (group_id,)
     ).fetchone()
     if row is None:
-        raise RulesetError("找不到該番組")
+        raise RulesetError("找不到該群組")
     return row
 
 
@@ -289,12 +289,12 @@ def slot_rows(conn: sqlite3.Connection, group_id: int) -> list[sqlite3.Row]:
 
 
 def default_group_name(conn: sqlite3.Connection, version_id: int) -> str:
-    """新番組的預設名稱：番組1、番組2……取第一個還沒被用掉的。"""
+    """新群組的預設名稱：群組1、群組2……取第一個還沒被用掉的。"""
     used = {row["name"] for row in group_rows(conn, version_id)}
     n = 1
-    while f"番組{n}" in used:
+    while f"群組{n}" in used:
         n += 1
-    return f"番組{n}"
+    return f"群組{n}"
 
 
 def expand_codes(mode: str, expr: str) -> tuple[str, ...]:
@@ -307,7 +307,7 @@ def expand_codes(mode: str, expr: str) -> tuple[str, ...]:
 def _regenerate_slots(
     conn: sqlite3.Connection, version_id: int, group_id: int, count: int
 ) -> None:
-    """重新展開槽位。⚠️ 已設好的休與改寫代碼一律清空（DEVELOPER §3）。"""
+    """重新展開槽位。⚠️ 已設好的休與自訂代碼一律清空（DEVELOPER §3）。"""
     conn.execute("DELETE FROM RV_Slot WHERE group_id = ?", (group_id,))
     conn.executemany(
         "INSERT INTO RV_Slot(version_id, group_id, seq, is_rest, code_override) "
@@ -320,20 +320,20 @@ def _assert_unique_name(
     conn: sqlite3.Connection, version_id: int, name: str, group_id: int | None = None
 ) -> None:
     if not name:
-        raise RulesetError("番組名稱不可空白")
+        raise RulesetError("群組名稱不可空白")
     row = conn.execute(
         "SELECT group_id FROM RV_Group WHERE version_id = ? AND name = ?",
         (version_id, name),
     ).fetchone()
     if row is not None and row["group_id"] != group_id:
-        raise RulesetError(f"已經有叫「{name}」的番組")
+        raise RulesetError(f"已經有叫「{name}」的群組")
 
 
 def add_group(
     conn: sqlite3.Connection, version_id: int, name: str, mode: str, expr: str,
     header_before: bool = True, note: str = "",
 ) -> int:
-    """新增番組並展開槽位，排到最後。"""
+    """新增群組並展開槽位，排到最後。"""
     _assert_draft(conn, version_id)
     name = name.strip()
     expr = expr.strip()
@@ -358,7 +358,7 @@ def update_group(
     conn: sqlite3.Connection, group_id: int, name: str, mode: str, expr: str,
     header_before: bool, note: str,
 ) -> bool:
-    """修改番組。模式或範圍有變時重新展開槽位並回傳 True（休與改寫已清空）。"""
+    """修改群組。模式或範圍有變時重新展開槽位並回傳 True（休與自訂代碼已清空）。"""
     old = _group_row(conn, group_id)
     version_id = old["version_id"]
     _assert_draft(conn, version_id)
@@ -387,7 +387,7 @@ def delete_group(conn: sqlite3.Connection, group_id: int) -> None:
 
 
 def save_group_order(conn: sqlite3.Connection, group_ids: list[int]) -> None:
-    """把畫面上的番組順序寫回 sort_order（1 起連續整數）。"""
+    """把畫面上的群組順序寫回 sort_order（1 起連續整數）。"""
     if group_ids:
         _assert_draft(conn, _group_row(conn, group_ids[0])["version_id"])
     conn.executemany(
@@ -398,11 +398,11 @@ def save_group_order(conn: sqlite3.Connection, group_ids: list[int]) -> None:
 
 
 def toggle_rest(conn: sqlite3.Connection, group_id: int, seq: int) -> bool:
-    """切換某格是否為休，回傳切換後的狀態。只有輪番組有休。"""
+    """切換某格是否為休，回傳切換後的狀態。只有輪番群組有休。"""
     group = _group_row(conn, group_id)
     _assert_draft(conn, group["version_id"])
     if group["mode"] != MODE_ROTATE:
-        raise RulesetError("只有輪番組可以設定休")
+        raise RulesetError("只有輪番群組可以設定休")
     row = conn.execute(
         "SELECT is_rest FROM RV_Slot WHERE group_id = ? AND seq = ?", (group_id, seq)
     ).fetchone()
@@ -420,11 +420,11 @@ def toggle_rest(conn: sqlite3.Connection, group_id: int, seq: int) -> bool:
 def set_code_override(
     conn: sqlite3.Connection, group_id: int, seq: int, code: str | None
 ) -> None:
-    """改寫某格代碼；空白或與展開結果相同＝取消改寫（回到預設）。"""
+    """自訂某格代碼；空白或與展開結果相同＝取消自訂（回到預設）。"""
     group = _group_row(conn, group_id)
     _assert_draft(conn, group["version_id"])
     if group["mode"] == MODE_BLANK:
-        raise RulesetError("空白欄沒有代碼可以改寫")
+        raise RulesetError("空白欄沒有代碼可以自訂")
     codes = expand_codes(group["mode"], group["range_expr"])
     if not 1 <= seq <= len(codes):
         raise RulesetError(f"第 {seq} 格不存在")
@@ -438,9 +438,9 @@ def set_code_override(
 
 
 def check_version(conn: sqlite3.Connection, version_id: int) -> None:
-    """「產生」鈕：跨番組檢查（撞號、整組都是休、空範圍）。有問題 raise RulesetError。"""
+    """「檢查規則」鈕與啟用前：跨群組檢查（撞號、整組都是休、空範圍）。有問題 raise RulesetError。"""
     if not group_rows(conn, version_id):
-        raise RulesetError("這份規則還沒有任何番組")
+        raise RulesetError("這份規則還沒有任何群組")
     try:
         validate_groups(load_groups(conn, version_id))
     except GroupError as exc:

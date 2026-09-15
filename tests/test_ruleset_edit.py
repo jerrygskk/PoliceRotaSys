@@ -31,10 +31,10 @@ class _EditTestCase(unittest.TestCase):
 
 class TestGroups(_EditTestCase):
     def test_default_names_count_up_and_fill_gaps(self):
-        self.assertEqual(ruleset.default_group_name(self.conn, self.empty), "番組1")
-        ruleset.add_group(self.conn, self.empty, "番組1", MODE_ROTATE, "1-5")
-        ruleset.add_group(self.conn, self.empty, "番組3", MODE_ROTATE, "6-9")
-        self.assertEqual(ruleset.default_group_name(self.conn, self.empty), "番組2")
+        self.assertEqual(ruleset.default_group_name(self.conn, self.empty), "群組1")
+        ruleset.add_group(self.conn, self.empty, "群組1", MODE_ROTATE, "1-5")
+        ruleset.add_group(self.conn, self.empty, "群組3", MODE_ROTATE, "6-9")
+        self.assertEqual(ruleset.default_group_name(self.conn, self.empty), "群組2")
 
     def test_add_expands_slots_and_goes_last(self):
         a = ruleset.add_group(self.conn, self.empty, "甲組", MODE_ROTATE, "1-5")
@@ -95,14 +95,14 @@ class TestSlots(_EditTestCase):
 
     def test_rest_only_on_rotate_groups(self):
         gid = self.group_id(self.draft, "固定番")
-        with self.assertRaisesRegex(ruleset.RulesetError, "只有輪番組"):
+        with self.assertRaisesRegex(ruleset.RulesetError, "只有輪番群組"):
             ruleset.toggle_rest(self.conn, gid, 1)
 
     def test_override_and_reset(self):
         gid = self.group_id(self.draft, "大輪番")
         ruleset.set_code_override(self.conn, gid, 2, "甲")
         self.assertEqual(ruleset.slot_rows(self.conn, gid)[1]["code_override"], "甲")
-        ruleset.set_code_override(self.conn, gid, 2, "02")          # 與預設相同＝取消改寫
+        ruleset.set_code_override(self.conn, gid, 2, "02")          # 與預設相同＝取消自訂
         self.assertIsNone(ruleset.slot_rows(self.conn, gid)[1]["code_override"])
         ruleset.set_code_override(self.conn, gid, 2, "甲")
         ruleset.set_code_override(self.conn, gid, 2, "")
@@ -114,7 +114,7 @@ class TestCheckAndActivate(_EditTestCase):
         ruleset.check_version(self.conn, self.draft)
 
     def test_empty_version_fails_check(self):
-        with self.assertRaisesRegex(ruleset.RulesetError, "沒有任何番組"):
+        with self.assertRaisesRegex(ruleset.RulesetError, "沒有任何群組"):
             ruleset.check_version(self.conn, self.empty)
 
     def test_overlapping_codes_block_check_and_activation(self):
@@ -155,7 +155,7 @@ class TestActiveVersionIsLocked(_EditTestCase):
                     call()
 
     def test_database_refuses_inserting_into_active_version(self):
-        """⚠️ 繞過程式直接下 SQL 也要被擋：新增番組與新增槽位。"""
+        """⚠️ 繞過程式直接下 SQL 也要被擋：新增群組與新增槽位。"""
         with self.assertRaisesRegex(sqlite3.DatabaseError, "不可修改"):
             self.conn.execute(
                 "INSERT INTO RV_Group(version_id, name, mode, range_expr) "

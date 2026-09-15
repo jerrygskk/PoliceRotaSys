@@ -95,7 +95,7 @@ TABLES = (
 )""",
 )
 
-# 一個人不可同時在兩個番組（DEVELOPER §9 已排除的需求）。
+# 一個人不可同時在兩個群組（DEVELOPER §9 已排除的需求）。
 INDEXES = (
     """CREATE UNIQUE INDEX IF NOT EXISTS ux_month_seed_one_group_per_member
        ON Month_Seed (plan_id, member_id)""",
@@ -119,7 +119,7 @@ BEGIN SELECT RAISE(ABORT, '{_LOCK_MSG}'); END""",
         f"""CREATE TRIGGER IF NOT EXISTS trg_{table}_no_delete
 BEFORE DELETE ON {table} {guard}
 BEGIN SELECT RAISE(ABORT, '{_LOCK_MSG}'); END""",
-        # 新增也要擋：否則可以往已啟用的版本塞進新番組／新槽位，鎖形同虛設。
+        # 新增也要擋：否則可以往已啟用的版本塞進新群組／新槽位，鎖形同虛設。
         f"""CREATE TRIGGER IF NOT EXISTS trg_{table}_no_insert
 BEFORE INSERT ON {table} {guard.replace("OLD.", "NEW.")}
 BEGIN SELECT RAISE(ABORT, '{_LOCK_MSG}'); END""",

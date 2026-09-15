@@ -20,7 +20,7 @@ from lib.rota import MODE_BLANK, blank_labels, expand_range
 
 # ⚠️ 全部是虛構姓名，不得替換成真實同仁。
 #
-# 人數刻意等於預設草稿三個番組的總格數（20 + 8 + 6 = 34）——模板若配不滿
+# 人數刻意等於預設草稿三個群組的總格數（20 + 8 + 6 = 34）——模板若配不滿
 # 自己的預設規則，第一次開起來就會產出有空欄的月表，承辦人會以為程式壞了。
 # 改動 SEED_GROUPS 時要回頭核對這個數字（tests/test_db.py 釘住）。
 SEED_MEMBERS = (

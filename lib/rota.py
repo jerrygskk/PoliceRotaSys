@@ -1,4 +1,4 @@
-"""排班演算法：範圍式展開、槽位推算、跨番組驗證。
+"""排班演算法：範圍式展開、槽位推算、跨群組驗證。
 
 ⚠️ 本模組**零相依**——不 import Qt、不 import 資料庫，只吃參數、吐結果。
 所以測它不必準備資料庫，也不必有 GUI 環境。改動時請維持這個性質。
@@ -33,7 +33,7 @@ class RangeError(ValueError):
 
 
 class GroupError(ValueError):
-    """跨番組的邏輯錯誤（撞號等）。按「產生」時才驗得出來。"""
+    """跨群組的邏輯錯誤（撞號等）。按「檢查規則」或「啟用」時才驗得出來。"""
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ class Slot:
 
 @dataclass(frozen=True)
 class Group:
-    """一個番組。``slots`` 的長度即循環格數，不另存。"""
+    """一個群組。``slots`` 的長度即循環格數，不另存。"""
 
     name: str
     mode: str  # 'rotate' 輪番 / 'fixed' 固定
@@ -162,7 +162,7 @@ MODES = (MODE_ROTATE, MODE_FIXED, MODE_BLANK)
 
 
 def blank_labels(expr: str) -> tuple[str, ...]:
-    """``blank`` 番組的欄標題：逗號分隔的字面文字，不是範圍式。
+    """``blank`` 群組的欄標題：逗號分隔的字面文字，不是範圍式。
 
     紙本上「同仁專案臨檢／請假」的早／中／晚、以及「快打勤務」都屬於這類——
     有欄標題、有格線，但**格子全空供手寫**，不配人也不算番號。
@@ -179,7 +179,7 @@ def make_group(
     if mode not in MODES:
         raise ValueError(f"未知的模式：{mode}")
     if mode != MODE_ROTATE and rest_seqs:
-        raise ValueError(f"{mode} 番組沒有輪休格位")
+        raise ValueError(f"{mode} 群組沒有輪休格位")
     if mode == MODE_BLANK:
         return Group(
             name=name,
@@ -199,14 +199,14 @@ def make_group(
 def validate_expr(expr: str) -> None:
     """離開欄位時的語法驗證（DEVELOPER §3「兩層驗證」）。
 
-    只驗這個欄位自己的事；撞號要等所有番組填完，由
+    只驗這個欄位自己的事；撞號要等所有群組填完，由
     :func:`validate_groups` 負責。
     """
     expand_range(expr)
 
 
 def validate_groups(groups: list[Group]) -> None:
-    """按「產生」時的跨番組驗證。"""
+    """按「檢查規則」或「啟用」時的跨群組驗證。"""
     seen: dict[str, str] = {}
     for group in groups:
         if not group.slots:
@@ -232,7 +232,7 @@ def validate_groups(groups: list[Group]) -> None:
 def slot_on_day(group: Group, seed_seq: int, day: int) -> Slot:
     """某人在該月第 ``day`` 天站在哪一格。``seed_seq`` 是他 1 日的格位。
 
-    輪番組每天往後推一格；固定番不隨日期前進（DEVELOPER §2）。
+    輪番群組每天往後推一格；固定番不隨日期前進（DEVELOPER §2）。
     """
     if not 1 <= seed_seq <= group.cycle_len:
         raise ValueError(f"起始格位 {seed_seq} 超出範圍（共 {group.cycle_len} 格）")

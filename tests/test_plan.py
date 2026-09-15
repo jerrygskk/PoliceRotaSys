@@ -105,7 +105,7 @@ class TestCreatePlan(_PlanTestCase):
             self.make_plan(seeds=short)
 
     def test_a_group_with_nobody_at_all_is_refused(self):
-        """一個人都沒配的番組過不了完整性檢查。"""
+        """一個人都沒配的群組過不了完整性檢查。"""
         without = self.full_seeds()
         without.pop(self.gid["幹部"])
         with self.assertRaisesRegex(plan.PlanError, "幹部"):

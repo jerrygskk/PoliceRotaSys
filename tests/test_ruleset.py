@@ -54,7 +54,7 @@ class TestActivate(_RulesetTestCase):
 
     def test_empty_draft_cannot_be_activated(self):
         empty = ruleset.create_draft(self.conn, self.ruleset_id, "空的")
-        with self.assertRaisesRegex(ruleset.RulesetError, "沒有任何番組"):
+        with self.assertRaisesRegex(ruleset.RulesetError, "沒有任何群組"):
             ruleset.activate(self.conn, empty)
 
     def test_unknown_version_is_refused(self):

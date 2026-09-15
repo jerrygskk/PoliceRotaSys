@@ -316,7 +316,7 @@ class TestAdaptiveWidth(unittest.TestCase):
             self.assertGreaterEqual(width, xlsx_writer.MIN_COL_WIDTH)
 
     def test_each_group_gets_its_own_width_from_its_setting(self):
-        """⚠️ 權重是每個番組的設定，不是由欄的種類推的。
+        """⚠️ 權重是每個群組的設定，不是由欄的種類推的。
 
         第一版靠「格子是不是空的」去猜，所有手寫欄一律同寬——但固定番、
         劃假區、幹部要寫的東西不一樣多，現場要能分別調。

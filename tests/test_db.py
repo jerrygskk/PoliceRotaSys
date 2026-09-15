@@ -184,7 +184,7 @@ class TestMonthSeedConstraints(_DbTestCase):
         )
 
     def test_a_member_cannot_be_in_two_groups(self):
-        """DEVELOPER §9：同一人同時在兩個番組，不允許。"""
+        """DEVELOPER §9：同一人同時在兩個群組，不允許。"""
         self._seed_row(0, 1, 1)
         with self.assertRaises(sqlite3.IntegrityError):
             self._seed_row(1, 1, 1)
