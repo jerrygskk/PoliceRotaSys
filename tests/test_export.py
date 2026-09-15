@@ -239,19 +239,24 @@ class TestAdaptiveWidth(unittest.TestCase):
         for width in xlsx_writer.column_widths(self.sheet_with(60)):
             self.assertGreaterEqual(width, xlsx_writer.MIN_COL_WIDTH)
 
-    def test_write_in_columns_are_wider_than_the_date_columns(self):
-        """⚠️ 手寫區要留得下筆跡，日期／星期只放一兩個字，給最窄。"""
-        from lib.layout_model import column_weight
+    def test_write_in_columns_are_the_only_wider_ones(self):
+        """⚠️ 手寫區要留得下筆跡，其餘一律等寬（維護者裁示）。"""
+        from lib.layout_model import (
+            WEIGHT_BLANK,
+            WEIGHT_FILLED,
+            WEIGHT_HEADER,
+            WEIGHT_TITLE,
+        )
+
+        self.assertEqual(WEIGHT_HEADER, WEIGHT_FILLED)
+        self.assertEqual(WEIGHT_TITLE, WEIGHT_FILLED)
+        self.assertGreater(WEIGHT_BLANK, WEIGHT_FILLED)
 
         sheet = self.sheet_with(20)
         widths = xlsx_writer.column_widths(sheet)
-        date_w = next(
-            w for w, c in zip(widths, sheet.columns) if c.kind == "date"
-        )
-        duty_w = next(
-            w for w, c in zip(widths, sheet.columns) if c.kind == "member"
-        )
-        self.assertLess(date_w, duty_w)
+        date_w = next(w for w, c in zip(widths, sheet.columns) if c.kind == "date")
+        duty_w = next(w for w, c in zip(widths, sheet.columns) if c.kind == "member")
+        self.assertAlmostEqual(date_w, duty_w, delta=0.01)
 
     def test_clamped_columns_give_their_difference_back(self):
         """⚠️ 夾到上下限的欄，差額要還給其他欄。

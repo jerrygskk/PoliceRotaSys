@@ -116,9 +116,23 @@ def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
     weights = [weight_of(column) for column in columns]
     unit_w = page.width() / sum(weights)
 
-    # 代碼格最窄的一欄決定字級，整張表才會一致。
-    narrowest = unit_w * min(weights)
-    body_px = min(row_h * BODY_HEIGHT_RATIO, narrowest * BODY_WIDTH_RATIO)
+    # ⚠️ **字級由資料欄決定，不要被最窄的那一欄拖下去。**
+    #
+    # 第一版拿「所有欄裡最窄的」算字級——那是日期／星期欄（權重最小），
+    # 結果整張表的字都被那兩欄壓小。現場回報「PDF 字太小」就是這個。
+    # 日期／星期欄自己用自己的字級（它們只放一兩個字）。
+    data_weights = [
+        weight_of(column)
+        for column in columns
+        if column.kind in (COL_MEMBER, COL_BLANK)
+    ] or weights
+    body_px = min(
+        row_h * BODY_HEIGHT_RATIO, unit_w * min(data_weights) * BODY_WIDTH_RATIO
+    )
+    header_px = min(
+        row_h * BODY_HEIGHT_RATIO,
+        unit_w * min(weights) * BODY_WIDTH_RATIO,
+    )
 
     x = page.left()
     for block in sheet.blocks:
@@ -140,7 +154,12 @@ def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
                 x += width
                 continue
 
-            painter.setFont(_font(body_px))
+            cell_px = (
+                header_px
+                if column.kind not in (COL_MEMBER, COL_BLANK)
+                else body_px
+            )
+            painter.setFont(_font(cell_px))
             if not block.note:
                 header_rect = QRectF(x, page.top(), width, name_h)
                 # 沒有小標題的欄（同仁專案臨檢、快打勤務），標題跨姓名列與
@@ -158,6 +177,7 @@ def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
                         painter, header_rect, column.header, column.header_color
                     )
                 if column.code or column.kind != COL_BLANK:
+                    painter.setFont(_font(cell_px))
                     _paint_cell(
                         painter,
                         QRectF(x, page.top() + name_h, width, code_h),
@@ -172,6 +192,7 @@ def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
                     RED,
                 )
 
+            painter.setFont(_font(cell_px))
             top = page.top() + name_h + code_h
             for day, cell in enumerate(column.cells):
                 _paint_cell(

@@ -68,9 +68,12 @@ class Column:
 # 手寫區（固定番、幹部、專案臨檢、早中晚、快打勤務）給得比程式填滿的欄寬，
 # 因為那些格子是要用筆畫假的；日期／星期只放一兩個字，給最窄。
 WEIGHT_TITLE = 1.0
-WEIGHT_HEADER = 0.72     # 日期／星期
+WEIGHT_HEADER = 1.0      # 日期／星期
 WEIGHT_FILLED = 1.0      # 程式填滿的輪番欄
 WEIGHT_BLANK = 1.3       # 留白供手寫的欄
+
+# ⚠️ 日期／星期曾經調成 0.72 想把空間讓給劃假區，但整張表的格子跟著變小，
+# 維護者裁示改回 1.0——只有手寫欄比別人寬，其餘一律等寬。
 
 
 def column_weight(column: "Column") -> float:
