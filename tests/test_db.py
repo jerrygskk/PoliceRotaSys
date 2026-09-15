@@ -255,7 +255,7 @@ class TestSeed(_DbTestCase):
         承辦人會以為程式壞了。改 SEED_GROUPS 時要回頭核對這個數字。"""
         total = sum(
             db_seed._slot_count(mode, expr)
-            for _, mode, expr, _, _, _ in db_seed.SEED_GROUPS
+            for _, mode, expr, _, _, _, _ in db_seed.SEED_GROUPS
             if mode != "blank"          # 空白欄不配人
         )
         self.assertEqual(len(db_seed.SEED_MEMBERS), total)

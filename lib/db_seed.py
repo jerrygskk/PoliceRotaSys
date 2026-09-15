@@ -51,14 +51,17 @@ SEED_SHIFT_NOTE = (
     "red|限填1人"
 )
 
+# 欄寬權重由維護者指定：輪番 1.1、固定番 1.2、劃假 1.4、幹部 1.2。
+# ⚠️ 同仁專案臨檢與快打勤務維護者沒指名，暫用 1.2（同屬手寫欄），待確認。
 SEED_GROUPS = (
-    # (名稱, 模式, 範圍式／欄標題, 休假格位, 左邊要不要放日期／星期欄, 註記)
-    ("大輪番", "rotate", "1-20", (6, 7, 13, 14, 19, 20), True, ""),
-    ("固定番", "fixed", "21-28", (), True, ""),
-    ("同仁專案臨檢", "blank", "同仁專案臨檢", (), True, ""),
-    ("班別", "blank", "早,中,晚", (), False, SEED_SHIFT_NOTE),
-    ("幹部", "fixed", "A-F", (), False, ""),
-    ("快打勤務", "blank", "快打勤務", (), False, ""),
+    # (名稱, 模式, 範圍式／欄標題, 休假格位, 左邊要不要放日期／星期欄,
+    #  註記, 欄寬權重)
+    ("大輪番", "rotate", "1-20", (6, 7, 13, 14, 19, 20), True, "", 1.1),
+    ("固定番", "fixed", "21-28", (), True, "", 1.2),
+    ("同仁專案臨檢", "blank", "同仁專案臨檢", (), True, "", 1.2),
+    ("班別", "blank", "早,中,晚", (), False, SEED_SHIFT_NOTE, 1.4),
+    ("幹部", "fixed", "A-F", (), False, "", 1.2),
+    ("快打勤務", "blank", "快打勤務", (), False, "", 1.2),
 )
 
 DEFAULT_SETTINGS = {
@@ -117,14 +120,14 @@ def _seed_draft(conn: sqlite3.Connection, ruleset_name: str) -> None:
     )
     version_id = cur.lastrowid
 
-    for order, (name, mode, expr, rests, header, note) in enumerate(
+    for order, (name, mode, expr, rests, header, note, weight) in enumerate(
         SEED_GROUPS, start=1
     ):
         cur = conn.execute(
             "INSERT INTO RV_Group"
             "(version_id, name, mode, range_expr, rest_code, header_before, "
-            "note, sort_order) VALUES (?, ?, ?, ?, '00', ?, ?, ?)",
-            (version_id, name, mode, expr, 1 if header else 0, note, order),
+            "note, col_weight, sort_order) VALUES (?, ?, ?, ?, '00', ?, ?, ?, ?)",
+            (version_id, name, mode, expr, 1 if header else 0, note, weight, order),
         )
         group_id = cur.lastrowid
         rest_set = set(rests)

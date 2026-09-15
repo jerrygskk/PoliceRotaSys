@@ -276,6 +276,7 @@ def build_sheet_for(
                     entries=tuple(Entry(name=slot.code) for slot in group.slots),
                     header_before=bool(row["header_before"]),
                     note=parse_note(row["note"]),
+                    weight=row["col_weight"],
                 )
             )
             blank_names.add(row["name"])
@@ -304,6 +305,7 @@ def build_sheet_for(
                 name=row["name"],
                 entries=entries,
                 header_before=bool(row["header_before"]),
+                weight=row["col_weight"],
             )
         )
 

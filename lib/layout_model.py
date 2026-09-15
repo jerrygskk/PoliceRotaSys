@@ -55,6 +55,7 @@ class Column:
     header: str = ""          # 姓名，或「日期」「星期」
     code: str = ""            # 固定番／幹部的代碼，印在姓名下
     header_color: str = BLACK
+    weight: float = 1.0       # 相對欄寬，來自所屬番組的設定
     cells: tuple[Cell, ...] = ()
 
     @property
@@ -65,15 +66,12 @@ class Column:
 # 欄寬權重。⚠️ 放在版面模型裡是刻意的——兩個 renderer 必須用同一份，
 # 否則 Excel 印出來跟 PDF 會不一樣寬。
 #
-# 手寫區（固定番、幹部、專案臨檢、早中晚、快打勤務）給得比程式填滿的欄寬，
-# 因為那些格子是要用筆畫假的；日期／星期只放一兩個字，給最窄。
+# ⚠️ **每個番組的權重是設定（`RV_Group.col_weight`），不是由欄的種類推的。**
+# 第一版靠「格子是不是空的」去猜，結果所有手寫欄一律同寬——但固定番、劃假區、
+# 幹部要寫的東西不一樣多，現場要能分別調。
 WEIGHT_TITLE = 1.0
 WEIGHT_HEADER = 1.0      # 日期／星期
-WEIGHT_FILLED = 1.0      # 程式填滿的輪番欄
-WEIGHT_BLANK = 1.3       # 留白供手寫的欄
-
-# ⚠️ 日期／星期曾經調成 0.72 想把空間讓給劃假區，但整張表的格子跟著變小，
-# 維護者裁示改回 1.0——只有手寫欄比別人寬，其餘一律等寬。
+WEIGHT_DEFAULT = 1.0     # 番組沒指定時
 
 
 def column_weight(column: "Column") -> float:
@@ -81,9 +79,7 @@ def column_weight(column: "Column") -> float:
         return WEIGHT_TITLE
     if column.kind in (COL_DATE, COL_WEEKDAY):
         return WEIGHT_HEADER
-    if all(not cell.text for cell in column.cells):
-        return WEIGHT_BLANK
-    return WEIGHT_FILLED
+    return column.weight
 
 
 @dataclass(frozen=True)
@@ -167,6 +163,8 @@ class Section:
     header_before: bool = True
     # 跨整個區塊的註記（逐行帶顏色），畫在姓名列的合併格裡。
     note: tuple[NoteLine, ...] = ()
+    # 這個區塊每欄的相對寬度（RV_Group.col_weight）。
+    weight: float = WEIGHT_DEFAULT
 
 
 def roc_year(year: int) -> int:
@@ -238,7 +236,11 @@ def _header_block(year: int, month: int, day_count: int) -> Block:
 
 
 def _member_column(
-    entry: Entry, day_count: int, rest_code: str, kind: str = COL_MEMBER
+    entry: Entry,
+    day_count: int,
+    rest_code: str,
+    kind: str = COL_MEMBER,
+    weight: float = WEIGHT_DEFAULT,
 ) -> Column:
     if entry.slots is None:
         cells = tuple(Cell() for _ in range(day_count))
@@ -252,7 +254,10 @@ def _member_column(
             Cell(rest_code, RED) if slot.is_rest else Cell(slot.code, BLACK)
             for slot in entry.slots
         )
-    return Column(kind=kind, header=entry.name, code=entry.code, cells=cells)
+    return Column(
+        kind=kind, header=entry.name, code=entry.code,
+        weight=weight, cells=cells,
+    )
 
 
 def build_sheet(
@@ -283,14 +288,17 @@ def build_sheet(
         is_blank = section.name in blank_sections
         kind = COL_BLANK if is_blank else COL_MEMBER
         columns = tuple(
-            _member_column(entry, day_count, rest_code, kind)
+            _member_column(entry, day_count, rest_code, kind, section.weight)
             for entry in section.entries
         )
         if is_blank and section.note:
             # 有註記的空白區塊：註記佔掉姓名列（合併格），
             # 各欄的小標題（早／中／晚）移到代碼列。
             columns = tuple(
-                Column(kind=col.kind, header="", code=col.header, cells=col.cells)
+                Column(
+                    kind=col.kind, header="", code=col.header,
+                    weight=col.weight, cells=col.cells,
+                )
                 for col in columns
             )
         blocks.append(

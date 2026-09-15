@@ -103,11 +103,11 @@ def copy_to_draft(
         cur = conn.execute(
             "INSERT INTO RV_Group"
             "(version_id, name, mode, range_expr, rest_code, header_before, "
-            "note, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "note, col_weight, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 new_id, group["name"], group["mode"], group["range_expr"],
                 group["rest_code"], group["header_before"], group["note"],
-                group["sort_order"],
+                group["col_weight"], group["sort_order"],
             ),
         )
         new_group_id = cur.lastrowid

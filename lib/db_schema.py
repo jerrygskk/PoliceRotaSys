@@ -55,6 +55,9 @@ TABLES = (
     -- 這個區塊左邊要不要再放一次日期／星期欄。現行紙本不是每個區塊都有
     -- （幹部與快打勤務前面就沒有），所以做成設定而不是寫死規則。
     header_before INTEGER NOT NULL DEFAULT 1,
+    -- 這個區塊每欄的相對寬度。手寫欄要留得下筆跡，所以比輪番欄寬。
+    -- 現場會調，所以是設定不是寫死（CLAUDE.md §B）。
+    col_weight REAL NOT NULL DEFAULT 1.0,
     -- 跨整個區塊的註記，畫在姓名列的合併格裡。一行一筆「顏色|文字」。
     -- 內容會提到番號（例「早班:(8-12、15)」），所以跟著規則版本一起凍結。
     note       TEXT NOT NULL DEFAULT '',

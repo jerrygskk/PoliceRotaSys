@@ -271,24 +271,34 @@ class TestAdaptiveWidth(unittest.TestCase):
         for width in xlsx_writer.column_widths(self.sheet_with(60)):
             self.assertGreaterEqual(width, xlsx_writer.MIN_COL_WIDTH)
 
-    def test_write_in_columns_are_the_only_wider_ones(self):
-        """⚠️ 手寫區要留得下筆跡，其餘一律等寬（維護者裁示）。"""
-        from lib.layout_model import (
-            WEIGHT_BLANK,
-            WEIGHT_FILLED,
-            WEIGHT_HEADER,
-            WEIGHT_TITLE,
+    def test_each_group_gets_its_own_width_from_its_setting(self):
+        """⚠️ 權重是每個番組的設定，不是由欄的種類推的。
+
+        第一版靠「格子是不是空的」去猜，所有手寫欄一律同寬——但固定番、
+        劃假區、幹部要寫的東西不一樣多，現場要能分別調。
+        """
+        from lib.layout_model import Entry, Section, build_sheet
+
+        # ⚠️ 欄數要夠多，否則每欄都被夾到 MAX_COL_WIDTH，比例就量不出來。
+        sheet = build_sheet(
+            UNIT, 2026, 10,
+            [
+                Section(
+                    "窄", tuple(Entry(f"甲{i:02d}") for i in range(20)),
+                    header_before=False, weight=1.0,
+                ),
+                Section(
+                    "寬", tuple(Entry(f"乙{i:02d}") for i in range(20)),
+                    header_before=False, weight=1.4,
+                ),
+            ],
+            blank_sections=frozenset({"窄", "寬"}),
         )
-
-        self.assertEqual(WEIGHT_HEADER, WEIGHT_FILLED)
-        self.assertEqual(WEIGHT_TITLE, WEIGHT_FILLED)
-        self.assertGreater(WEIGHT_BLANK, WEIGHT_FILLED)
-
-        sheet = self.sheet_with(20)
-        widths = xlsx_writer.column_widths(sheet)
-        date_w = next(w for w, c in zip(widths, sheet.columns) if c.kind == "date")
-        duty_w = next(w for w, c in zip(widths, sheet.columns) if c.kind == "member")
-        self.assertAlmostEqual(date_w, duty_w, delta=0.01)
+        widths = dict(
+            zip((c.header or c.code for c in sheet.columns),
+                xlsx_writer.column_widths(sheet))
+        )
+        self.assertAlmostEqual(widths["乙00"] / widths["甲00"], 1.4, delta=0.02)
 
     def test_clamped_columns_give_their_difference_back(self):
         """⚠️ 夾到上下限的欄，差額要還給其他欄。
