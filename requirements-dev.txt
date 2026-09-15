@@ -1,0 +1,3 @@
+# 開發與測試相依，不進 exe，不受封閉清單限制。
+-r requirements.txt
+pytest
