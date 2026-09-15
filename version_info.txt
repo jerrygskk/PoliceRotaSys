@@ -1,0 +1,31 @@
+# UTF-8
+# 由 bump_version.py 自動產生，請勿手改（用 bump_version.py 進版即可）
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(0, 1, 0, 0),
+    prodvers=(0, 1, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '040404b0',
+        [
+          StringStruct('CompanyName', '警察勤務輪番表產生器'),
+          StringStruct('FileDescription', '警察勤務輪番表產生器'),
+          StringStruct('FileVersion', '0.1.0'),
+          StringStruct('InternalName', 'PoliceRotaSys.exe'),
+          StringStruct('LegalCopyright', '© 2026 PoliceRotaSys'),
+          StringStruct('OriginalFilename', 'PoliceRotaSys.exe'),
+          StringStruct('ProductName', '警察勤務輪番表產生器'),
+          StringStruct('ProductVersion', '0.1.0')
+        ])
+    ]),
+    VarFileInfo([VarStruct('Translation', [1028, 1200])])
+  ]
+)

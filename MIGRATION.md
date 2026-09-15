@@ -105,5 +105,5 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 
 - [ ] `tabs/` 四個分頁與配對彈窗
 - [ ] `lib/print_canvas.py` 與列印三層驗收網
-- [ ] `lib/version.py` ＋ `tools/bump_version.py`
+- [x] `lib/version.py` ＋ `tools/bump_version.py`（產品名改為本專案、拿掉獨立版與 README 版號同步；起始 0.1.0）
 - [ ] PyInstaller 打包
