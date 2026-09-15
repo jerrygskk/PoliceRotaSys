@@ -122,7 +122,7 @@
   PoliceDocSys 踩過（`pypdf`／`reportlab` 兩行來自另一支沒有 pytest 的直譯器），
   本專案也踩過一次：版本號抄自雲端容器，而容器不是正式 gate 的環境，之後容器
   重置連那些套件都不在了。⚠️ **版本號必須是正式 gate 那支 Python 的實際快照**，
-  而且**不知道版本就不要填**（`pyinstaller` 目前刻意不釘）。
+  而且**不知道版本就不要填**（`pyinstaller` 曾刻意不釘，直到本機裝好才依實裝版本釘上）。
   由 `tests/test_environment_contract.py::TestPinnedVersions` 自動把關：裝好的
   版本與 pin 不符即紅。
 - **ENV-2**: **`importlib.metadata.version("PySide6")` 報 PackageNotFound，但

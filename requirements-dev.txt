@@ -22,6 +22,6 @@ pytest==9.1.1
 pytest-qt==4.5.0
 
 # 打包（PyInstaller --onefile）
-# ⚠️ 版本刻意留空：本機第一次裝好之後，把實際版本釘上來再 commit。
-#    不要從別的環境抄一個版本號填進去——那正是 PoliceDocSys 踩過的雷。
-pyinstaller
+# ⚠️ 版本取自正式 gate 那支 Python 的實際安裝（2026-09-15 本機快照）。
+#    升版時同樣以本機實裝版本為準，不要從別的環境抄——PoliceDocSys 踩過。
+pyinstaller==6.20.0
