@@ -55,10 +55,29 @@ python -m pip install -r requirements-dev.txt
 | `openpyxl` | 3.1.5 | **產品 runtime**：xlsx 輸出 |
 | `pytest` | 9.1.1 | 測試 |
 | `pytest-qt` | 4.5.0 | 之後寫 GUI pilot 要用 |
-| `pyinstaller` | 6.16.0 | `--onefile` 打包 |
+| `pyinstaller` | **未釘** | `--onefile` 打包 |
 
 ⚠️ **前兩個是封閉清單**（`requirements.txt`）。要往裡面加東西一律先問維護者，
 分界由 `tests/test_environment_contract.py` 守著。
+
+### ⚠️ 第一件事：把 `pyinstaller` 的版本釘上來
+
+`pyinstaller` **刻意沒有版本號**。理由是這輪踩過的雷（`PITFALLS.md` ENV-1）：
+
+> 版本號原本是從雲端容器抓的，而容器**不是正式 gate 的環境**；後來容器重置，
+> 連那些套件都不在了。`pyinstaller==6.16.0` 那個數字更是憑空編的。
+> PoliceDocSys 也踩過同一件事——`pypdf`／`reportlab` 兩行來自另一支沒有
+> pytest 的直譯器，而這種不一致**靠人工看不出來**。
+
+所以：本機裝好之後，用實際版本把它釘上去再 commit。**不要從別處抄一個數字填**。
+
+```powershell
+python -m pip show pyinstaller     # 看實際版本
+```
+
+其餘四個 pin（`PySide6==6.11.1`、`openpyxl==3.1.5`、`pytest==9.1.1`、
+`pytest-qt==4.5.0`）已對齊 PoliceDocSys 的 gate 環境，但**第一次在本機跑測試時
+請確認沒紅**——`TestPinnedVersions` 會把不一致直接指出來。
 
 ### 不用另外裝的
 

@@ -116,6 +116,20 @@
   → 匯出 PDF 不需要完整的 `QApplication`，但**需要 `QGuiApplication`** 才能量字。
   `export/pdf_writer.py` 自己確保有一個，呼叫端不必先開。
 
+#### ENV：環境與相依
+
+- **ENV-1**: **`requirements` 的版本號抄自另一個環境，靠人工看不出來** →
+  PoliceDocSys 踩過（`pypdf`／`reportlab` 兩行來自另一支沒有 pytest 的直譯器），
+  本專案也踩過一次：版本號抄自雲端容器，而容器不是正式 gate 的環境，之後容器
+  重置連那些套件都不在了。⚠️ **版本號必須是正式 gate 那支 Python 的實際快照**，
+  而且**不知道版本就不要填**（`pyinstaller` 目前刻意不釘）。
+  由 `tests/test_environment_contract.py::TestPinnedVersions` 自動把關：裝好的
+  版本與 pin 不符即紅。
+- **ENV-2**: **`importlib.metadata.version("PySide6")` 報 PackageNotFound，但
+  `import PySide6` 明明成功** → PySide6 可由 `PySide6` 或 **`PySide6-Essentials`**
+  提供，**發行名稱與 import 名稱不同**。查版本時兩個都要試，否則會誤判成沒裝
+  而靜默跳過檢查。
+
 #### TST：測試
 
 - **TST-1**: **用純文字搜尋檢查「有沒有用到某套件」，被自己的註解抓到**

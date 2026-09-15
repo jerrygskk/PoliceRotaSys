@@ -1,5 +1,10 @@
 # 產品 runtime 相依：封閉清單（CLAUDE.md §B）。
 # ⚠️ 要加東西一律先問維護者——多一個套件就多一段開機解壓與載入時間。
 # PDF 走 Qt 的 QPdfWriter，不引入 reportlab。
-PySide6==6.11.2
+#
+# ⚠️ **版本號必須是「正式 gate 那支 Python 的實際快照」**，不是隨手從別的
+# 環境抄的。PoliceDocSys 踩過：pypdf／reportlab 兩行來自另一支沒有 pytest 的
+# 直譯器，與能跑測試的環境不符，而這種不一致**靠人工看不出來**。
+# 現由 tests/test_environment_contract.py 自動把關——裝好的版本與這裡不符即紅。
+PySide6==6.11.1
 openpyxl==3.1.5

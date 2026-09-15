@@ -77,6 +77,61 @@ class TestRuntimeDependencies(unittest.TestCase):
             self.assertNotIn("reportlab", _top_level_imports(path), str(path))
 
 
+class TestPinnedVersions(unittest.TestCase):
+    """⚠️ 裝好的版本必須與 requirements 裡釘的一致。
+
+    PoliceDocSys 踩過：requirements 的版本號來自**另一支沒有 pytest 的
+    直譯器**，與能跑測試的環境不符，而這種不一致**靠人工看不出來**。
+    這支測試就是把關的人。
+
+    只檢查「有裝的」——沒裝的套件由它自己的功能測試去 skip，不在這裡重複報。
+    """
+
+    # ⚠️ import 名稱與發行名稱可能不同：PySide6 可由 `PySide6` 或
+    # `PySide6-Essentials` 提供，查版本時要兩個都試，否則會誤判成沒裝。
+    DIST_ALIASES = {"PySide6": ("PySide6", "PySide6-Essentials")}
+
+    def _pins(self, filename):
+        text = (_ROOT / filename).read_text(encoding="utf-8")
+        pins = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("-r"):
+                continue
+            if "==" in line:
+                name, _, version = line.partition("==")
+                pins[name.strip()] = version.strip()
+        return pins
+
+    def _installed(self, name):
+        from importlib.metadata import PackageNotFoundError, version
+
+        for dist in self.DIST_ALIASES.get(name, (name,)):
+            try:
+                return version(dist)
+            except PackageNotFoundError:
+                continue
+        return None
+
+    def test_installed_versions_match_the_pins(self):
+        checked = 0
+        for filename in ("requirements.txt", "requirements-dev.txt"):
+            for name, pinned in self._pins(filename).items():
+                got = self._installed(name)
+                if got is None:
+                    continue          # 沒裝就不在這裡報
+                checked += 1
+                self.assertEqual(
+                    got, pinned,
+                    f"{filename} 釘 {name}=={pinned}，但裝的是 {got}；"
+                    "版本號必須是正式 gate 那支 Python 的實際快照",
+                )
+        self.assertGreater(checked, 0, "一個釘住的套件都沒裝，環境不完整")
+
+    def test_runtime_pins_cover_the_whole_closed_list(self):
+        self.assertEqual(set(self._pins("requirements.txt")), ALLOWED)
+
+
 class TestPureLogicModulesStayPure(unittest.TestCase):
     """★ 五支核心模組零 Qt 相依，才能在無 GUI 環境驗證（DEVELOPER §1）。"""
 
