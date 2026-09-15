@@ -48,7 +48,7 @@ class TestRuntimeDependencies(unittest.TestCase):
         import sys
 
         stdlib = set(sys.stdlib_module_names)
-        local = {"lib", "export", "tabs", "ui_utils", "main"}
+        local = {"lib", "export", "tabs", "ui_utils", "main", "res"}
         for path in _product_files():
             for module in _top_level_imports(path):
                 if module in stdlib or module in local or module in ALLOWED:
