@@ -287,7 +287,7 @@ class TestCheckboxIndicatorTick(unittest.TestCase):
     def test_icons_registered_in_qrc(self):
         from PySide6.QtCore import QFile
         import res.resources_rc  # noqa: F401
-        for path in (":/chk_check.svg", ":/chk_check_disabled.svg", ":/chk_dash.svg"):
+        for path in (":/chk_check.svg", ":/chk_check_disabled.svg"):
             self.assertTrue(QFile.exists(path), f"{path} 未登記進 qrc 或 rcc 未重編")
 
     def test_checked_draws_white_tick_on_blue(self):

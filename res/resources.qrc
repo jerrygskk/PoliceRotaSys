@@ -4,6 +4,5 @@
     <file alias="arrow.svg">buttons/arrow.svg</file>
     <file alias="chk_check.svg">buttons/chk_check.svg</file>
     <file alias="chk_check_disabled.svg">buttons/chk_check_disabled.svg</file>
-    <file alias="chk_dash.svg">buttons/chk_dash.svg</file>
   </qresource>
 </RCC>
