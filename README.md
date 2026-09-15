@@ -46,7 +46,7 @@ python -m unittest tests.test_no_pii
 `QT_QPA_PLATFORM=offscreen`，並安裝 Qt 的系統函式庫（`libegl1` 等，
 PySide6 的 wheel 不含）。見 `PITFALLS.md` QT-1。
 
-接手開發請先讀 `docs/handover.md`。
+接手開發請先讀 `CLAUDE.md`、`DEVELOPER.md`、`PITFALLS.md`。
 
 ## 相關
 

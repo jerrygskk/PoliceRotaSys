@@ -227,3 +227,6 @@ tests/pii_denylist.local.txt
 # 產出
 *.xlsx
 *.pdf
+
+# 交接快照（僅留本機，會過期）
+docs/handover.md
