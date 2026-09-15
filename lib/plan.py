@@ -258,9 +258,9 @@ def build_sheet_for(
     version_id = plan["ruleset_version_id"]
     seeds = load_seeds(conn, plan["plan_id"])
     loaded = _groups_by_name(conn, version_id)
-    names = {
-        row["member_id"]: row["name"]
-        for row in conn.execute("SELECT member_id, name FROM Member")
+    people = {
+        row["member_id"]: (row["name"], bool(row["female"]))
+        for row in conn.execute("SELECT member_id, name, female FROM Member")
     }
 
     sections: list[Section] = []
@@ -289,13 +289,18 @@ def build_sheet_for(
                 month,
             )
             entries = tuple(
-                Entry(name=names.get(member_id, "?"), slots=computed[str(member_id)])
+                Entry(
+                    name=people.get(member_id, ("?", False))[0],
+                    female=people.get(member_id, ("?", False))[1],
+                    slots=computed[str(member_id)],
+                )
                 for member_id in members
             )
         else:
             entries = tuple(
                 Entry(
-                    name=names.get(member_id, "?"),
+                    name=people.get(member_id, ("?", False))[0],
+                    female=people.get(member_id, ("?", False))[1],
                     code=group.slots[seq - 1].code,
                 )
                 for member_id, seq in members.items()

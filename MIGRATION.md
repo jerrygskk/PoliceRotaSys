@@ -83,9 +83,15 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
       等公文專屬檢查，保留 tracked 三來源掃描與 outgoing commit 掃描）
 - [x] `tests/test_environment_contract.py`（改寫：封閉清單改為 PySide6 ＋ openpyxl）
 
+**已移植（續）**
+
+- [x] `lib/theme.py` 全域樣式公版（純字串模組、無 Qt import，容器可安全搬）
+- [x] `res/buttons/` 的 `arrow.svg`／`chk_check.svg`／`chk_check_disabled.svg`／
+      `chk_dash.svg` 與 `res/resources.qrc`（勾選框的打勾圖，女警欄位要用）
+
 **尚未開始——⚠️ 這些都需要 GUI，容器做不了，要在維護者的機器上進行**
 
-- [ ] `lib/theme.py`、`ui_utils/*` 公版元件
+- [ ] `ui_utils/*` 公版元件
 - [ ] `tabs/` 四個分頁與配對彈窗
 - [ ] `lib/print_canvas.py` 與列印三層驗收網
 - [ ] `lib/version.py` ＋ `tools/bump_version.py`

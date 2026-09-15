@@ -330,9 +330,9 @@ def _write_column(
                 end_row=ROW_CODE, end_column=index,
             )
         else:
+            # ⚠️ 只有姓名跟著女警變紅，番號一律黑的。
             code = ws.cell(row=ROW_CODE, column=index, value=column.code or None)
-            code.font = Font(name=FONT_NAME, size=FONT_SIZE,
-                             color=_argb(column.header_color))
+            code.font = Font(name=FONT_NAME, size=FONT_SIZE)
             code.alignment = _CENTER
             code.border = _BORDER
     else:

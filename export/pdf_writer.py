@@ -190,11 +190,12 @@ def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
                     )
                 if column.code or column.kind != COL_BLANK:
                     painter.setFont(_font(cell_px))
+                    # ⚠️ 只有姓名跟著女警變紅，番號一律黑的。
                     _paint_cell(
                         painter,
                         QRectF(x, page.top() + name_h, width, code_h),
                         column.code,
-                        column.header_color,
+                        "black",
                     )
             else:
                 _paint_cell(

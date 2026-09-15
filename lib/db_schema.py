@@ -26,6 +26,8 @@ TABLES = (
     member_id INTEGER PRIMARY KEY AUTOINCREMENT,
     name      TEXT NOT NULL,
     active    INTEGER NOT NULL DEFAULT 1,
+    -- 女警。勾選後名字在 xlsx 與 pdf 都印紅色。
+    female    INTEGER NOT NULL DEFAULT 0,
     sort_order INTEGER NOT NULL DEFAULT 0
 )""",
     # ---- 規則版本區 -----------------------------------------------------

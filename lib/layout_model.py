@@ -153,6 +153,8 @@ class Entry:
     name: str
     code: str = ""
     slots: tuple[Slot, ...] | None = None
+    # 女警：姓名印紅色（維護者要求，xlsx 與 pdf 一致）。
+    female: bool = False
 
 
 @dataclass(frozen=True)
@@ -256,6 +258,7 @@ def _member_column(
         )
     return Column(
         kind=kind, header=entry.name, code=entry.code,
+        header_color=RED if entry.female else BLACK,
         weight=weight, cells=cells,
     )
 
@@ -297,6 +300,7 @@ def build_sheet(
             columns = tuple(
                 Column(
                     kind=col.kind, header="", code=col.header,
+                    header_color=col.header_color,
                     weight=col.weight, cells=col.cells,
                 )
                 for col in columns

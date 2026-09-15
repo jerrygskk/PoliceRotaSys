@@ -193,6 +193,32 @@ class TestXlsx(_TempDirCase):
             self.ws.cell(row=xlsx_writer.ROW_CODE, column=index).value, "21"
         )
 
+    def test_a_female_officer_name_is_red_and_her_code_is_not(self):
+        """⚠️ 女警只有姓名印紅色，番號一律黑的。"""
+        from lib.layout_model import Entry, Section, build_sheet
+
+        sheet = build_sheet(
+            UNIT, 2026, 10,
+            [Section("固定番",
+                     (Entry("王小明", code="21"),
+                      Entry("李小華", code="22", female=True)),
+                     header_before=False)],
+        )
+        path = str(self.dir / "female.xlsx")
+        xlsx_writer.write_sheet(sheet, path)
+        ws = load_workbook(path).active
+        cols = {c.header: i for i, c in enumerate(sheet.columns, start=1)}
+        male = ws.cell(row=xlsx_writer.ROW_NAME, column=cols["王小明"])
+        female = ws.cell(row=xlsx_writer.ROW_NAME, column=cols["李小華"])
+        self.assertEqual(male.font.color.rgb, "FF000000")
+        self.assertEqual(female.font.color.rgb, "FFCC0000")
+        code = ws.cell(row=xlsx_writer.ROW_CODE, column=cols["李小華"])
+        self.assertEqual(code.value, "22")
+        # 沒有明設顏色時 openpyxl 的 color 是 None，那就是預設黑。
+        self.assertTrue(
+            code.font.color is None or code.font.color.rgb != "FFCC0000"
+        )
+
     def test_member_names_are_written_vertically(self):
         """紙本上姓名是直書。"""
         column = block_named(self.sheet, "大輪番").columns[0]

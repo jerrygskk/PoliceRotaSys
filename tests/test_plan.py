@@ -282,6 +282,22 @@ class TestBuildSheetFor(_PlanTestCase):
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
         self.assertEqual(block_named(sheet, "大輪番").columns[0].header, db_seed.SEED_MEMBERS[0])
 
+    def test_female_officers_get_a_red_name(self):
+        """⚠️ 女警的姓名在 xlsx 與 pdf 都印紅色（維護者要求）。"""
+        from lib.layout_model import BLACK, RED
+
+        # ⚠️ 種子模板本來就標了幾位女警，先全部清掉再指定，否則量到的是種子。
+        self.conn.execute("UPDATE Member SET female = 0")
+        self.conn.execute(
+            "UPDATE Member SET female = 1 WHERE member_id = ?", (self.members[0],)
+        )
+        self.conn.commit()
+        self.make_plan()
+        sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
+        columns = block_named(sheet, "大輪番").columns
+        self.assertEqual(columns[0].header_color, RED)
+        self.assertEqual(columns[1].header_color, BLACK)
+
     def test_title_uses_the_unit_name_setting(self):
         self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)

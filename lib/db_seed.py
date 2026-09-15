@@ -41,6 +41,14 @@ SEED_MEMBERS = (
 # ⚠️ blank 模式的 range_expr 是**逗號分隔的字面欄標題**，不是範圍式。
 # 那幾欄有標題有格線但格子全空，供承辦人手寫（紙本上是「休」「補」
 # 「通補」那些），不配人也不算番號。
+# 模板裡先標幾位女警，讓承辦人一開起來就看得到「紅字＝女警」這件事。
+# ⚠️ 全部是虛構姓名。
+SEED_FEMALE = frozenset({
+    "李小華", "陳小美", "林小芳", "劉淑芬", "楊雅婷", "鄭淑娟",
+    "郭美玲", "曾惠雯", "何雅琪", "邱佩珊", "方怡君", "馮秀琴",
+    "高淑貞", "石雅芬",
+})
+
 # 紙本上早／中／晚三欄的上方那段班別說明，逐行不同顏色，照抄。
 # ⚠️ 內容提到的番號（1-5、16 等）與輪番規則綁在一起，換單位就不一樣，
 # 所以它存在規則版本裡、跟著一起凍結，不是寫死在程式。
@@ -95,8 +103,11 @@ def _seed_members(conn: sqlite3.Connection) -> None:
     if conn.execute("SELECT 1 FROM Member LIMIT 1").fetchone():
         return
     conn.executemany(
-        "INSERT INTO Member(name, active, sort_order) VALUES (?, 1, ?)",
-        [(name, i) for i, name in enumerate(SEED_MEMBERS, start=1)],
+        "INSERT INTO Member(name, active, female, sort_order) VALUES (?, 1, ?, ?)",
+        [
+            (name, 1 if name in SEED_FEMALE else 0, i)
+            for i, name in enumerate(SEED_MEMBERS, start=1)
+        ],
     )
 
 
