@@ -39,8 +39,7 @@ TITLE_FONT_SIZE = 18
 #
 # A3 橫式 1190.55 × 841.92 pt，四邊留 5mm：
 #   可列印寬 ≈ 1162pt   可列印高 ≈ 813pt
-# Excel 欄寬換算：pt = (7 × width + 5) × 0.75
-#   日期／星期欄 4.2 → 25.8pt；姓名欄 5.0 → 30.0pt
+# Excel 欄寬換算：pt = width × 7 × 0.75（見 _width_to_points）
 # 列高同樣按天數分配，31 天與 28 天都要填滿整頁。
 #
 # 人數更多的單位自然會超出，那時才由 fitToPage 接手縮小。
@@ -62,11 +61,11 @@ PRINTABLE_H_PT = A3_H_PT - 2 * _MARGIN_PT
 # 依權重分給各欄，人多自動變窄、人少自動變寬。
 #
 # 上下限是為了守住可讀性與美觀：
-#   下限 3.0 → 約 19.5pt，兩位數代碼在 12pt 字下的最小可讀寬度
-#   上限 10.0 → 人很少時不要讓格子胖到荒謬（手寫欄位寬一點無妨）
+#   下限 3.8 → 約 20pt，兩位數代碼在 12pt 字下的最小可讀寬度
+#   上限 13.0 → 人很少時不要讓格子胖到荒謬（手寫欄位寬一點無妨）
 # 欄數多到連下限都排不下時（約 58 欄），才交給 fitToPage 整張縮。
-MIN_COL_WIDTH = 3.0
-MAX_COL_WIDTH = 10.0
+MIN_COL_WIDTH = 3.8
+MAX_COL_WIDTH = 13.0
 
 # ⚠️ 欄寬權重在 lib/layout_model.column_weight，與 pdf_writer 共用——
 # 兩邊用不同的權重，Excel 印出來就會跟 PDF 不一樣寬。
@@ -124,13 +123,30 @@ def _has_spanning_header(sheet: Sheet) -> bool:
     )
 
 
+# Excel 欄寬單位換算。
+#
+# ⚠️ **每欄不要再加 5px 的 padding。**
+#
+# 常見的公式寫成 `pixels = width × MDW + 5`，那是 Excel UI 顯示「8.43
+# (64 像素)」時的算法。**實際版面佔的寬度是 `width × MDW`**——那 5px 在
+# Excel 把「可見字元數」換算成儲存值的時候就已經算進去了。
+#
+# 第一版每欄多加 5px，48 欄就多算了 240px ≈ 64mm：程式以為排滿 410mm，
+# Excel 實際只排了 346mm，預覽列印上左右各留了一大片白。現場回報「每格
+# 寬度太小」就是這個。
+#
+# 是拿維護者的預覽列印截圖反推出來的：表格實際佔 346mm，而 48 欄的
+# Σwidth × 7px = 1309px = 346mm，剛好吻合。
+MAX_DIGIT_WIDTH_PX = 7      # Calibri 11 的最大數字寬（openpyxl 的預設字型）
+PX_TO_PT = 0.75             # 96 dpi → 72 pt
+
+
 def _width_to_points(width: float) -> float:
-    """Excel 欄寬換算成點。pt = (7 × width + 5) × 0.75。"""
-    return (7 * width + 5) * 0.75
+    return width * MAX_DIGIT_WIDTH_PX * PX_TO_PT
 
 
 def _points_to_width(points: float) -> float:
-    return (points / 0.75 - 5) / 7
+    return points / (MAX_DIGIT_WIDTH_PX * PX_TO_PT)
 
 
 def column_widths(sheet: Sheet) -> list[float]:

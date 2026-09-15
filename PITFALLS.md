@@ -79,6 +79,15 @@
 - **XLS-2**: **設了 `fitToWidth`／`fitToHeight`，Excel 卻不照做**
   → 只設 `page_setup` 不夠，還要 `ws.sheet_properties.pageSetUpPr.fitToPage = True`，
   否則 Excel 直接忽略縮放設定（`export/xlsx_writer.py:_setup_page`）。
+- **XLS-4**: **欄寬換算每欄多加 5px，整張表比算的窄 16%** → 常見公式寫成
+  `pixels = width × MDW + 5`，那是 Excel **UI 顯示**「8.43 (64 像素)」時的算法；
+  **實際版面佔的寬度是 `width × MDW`**，那 5px 在 Excel 把「可見字元數」換算成
+  儲存值時就已經算進去了。48 欄各多算 5px ＝ 多算 240px ≈ 64mm：程式以為排滿
+  410mm，Excel 只排了 346mm，預覽列印左右各留一大片白。
+  ⚠️ **分辨法**：看預覽列印裡表格佔頁面的比例——**水平與垂直比例不同**就不是
+  縮放問題（縮放會等比例），而是某個方向的換算錯了。本例水平 84%、垂直 98%。
+  回歸測試直接驗毫米（`test_a_full_sheet_really_spans_the_printable_width_in_mm`），
+  只驗「有沒有填滿計算值」會一起錯過去。
 - **XLS-3**: **`fitToPage` 明明放得下也會縮一級，左右白掉一大片** → 「調整成
   1 頁寬 1 頁高」算頁面分割時比實際保守。現場實測：表格自然尺寸 410 × 287mm、
   可列印區也是 410 × 287mm，**關掉 fitToPage 用 100% 印出來是紮紮實實的 1/1**，

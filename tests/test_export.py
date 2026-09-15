@@ -214,6 +214,31 @@ class TestAdaptiveWidth(unittest.TestCase):
             for w in xlsx_writer.column_widths(sheet)
         )
 
+    def test_column_width_conversion_has_no_per_column_padding(self):
+        """⚠️ 每欄不要再加 5px 的 padding。
+
+        第一版用 `pixels = width × 7 + 5`，48 欄就多算了 240px ≈ 64mm：
+        程式以為排滿 410mm，Excel 實際只排了 346mm，左右各留一大片白。
+        數字是拿維護者的預覽列印截圖反推出來的。
+        """
+        self.assertAlmostEqual(xlsx_writer._width_to_points(1.0), 5.25, places=4)
+        self.assertAlmostEqual(xlsx_writer._width_to_points(0.0), 0.0, places=4)
+        # 來回換算要對得起來。
+        for width in (3.8, 4.12, 5.36, 13.0):
+            self.assertAlmostEqual(
+                xlsx_writer._points_to_width(
+                    xlsx_writer._width_to_points(width)
+                ),
+                width,
+                places=6,
+            )
+
+    def test_a_full_sheet_really_spans_the_printable_width_in_mm(self):
+        """換算錯的話這支會通過但實際印出來是窄的——所以直接驗毫米。"""
+        sheet = self.sheet_with(34)
+        mm = self.total_points(sheet) / 72 * 25.4
+        self.assertAlmostEqual(mm, 410.0, delta=1.0)
+
     def test_more_people_makes_columns_narrower(self):
         wide = xlsx_writer.column_widths(self.sheet_with(20))[-1]
         narrow = xlsx_writer.column_widths(self.sheet_with(34))[-1]
