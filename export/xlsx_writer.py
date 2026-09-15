@@ -224,6 +224,7 @@ def _setup_page(ws: Worksheet, sheet: Sheet) -> None:
     ws.page_setup.paperSize = ws.PAPERSIZE_A3
     ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
     ws.print_options.horizontalCentered = True
+    ws.print_options.verticalCentered = True
 
     # ⚠️ **放得下就固定 100%，不要交給 fitToPage。**
     #
@@ -362,8 +363,8 @@ def write_sheet(sheet: Sheet, path: str) -> None:
                 )
             index += 1
 
-    # 凍結窗格：捲動時姓名列與最左邊的標題／日期欄留在畫面上。
-    ws.freeze_panes = ws.cell(row=ROW_FIRST_DAY, column=4)
+    # ⚠️ 不設凍結窗格（維護者裁示）。這是一張要列印的表，不是拿來捲動看的；
+    # 凍結線在畫面上多一條橫槓，反而干擾。
     wb.save(path)
 
 

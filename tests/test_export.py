@@ -86,7 +86,14 @@ class TestXlsx(_TempDirCase):
             int(self.ws.page_setup.paperSize), int(self.ws.PAPERSIZE_A3)
         )
         self.assertEqual(self.ws.page_setup.orientation, "landscape")
+
+    def test_printing_is_centred_both_ways(self):
         self.assertTrue(self.ws.print_options.horizontalCentered)
+        self.assertTrue(self.ws.print_options.verticalCentered)
+
+    def test_no_freeze_panes(self):
+        """⚠️ 這是要列印的表，不是拿來捲動看的——凍結線只會多一條橫槓。"""
+        self.assertIsNone(self.ws.freeze_panes)
 
     def test_a_sheet_that_fits_prints_at_a_fixed_100_percent(self):
         """⚠️ fitToPage 明明放得下也會縮一級，左右就白掉一大片。
