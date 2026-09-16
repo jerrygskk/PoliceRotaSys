@@ -36,7 +36,10 @@ from lib.layout_model import (
 )
 
 FONT_NAME = "標楷體"
-TITLE_FONT_SIZE = 18
+# 最左標題欄（維護者 2026-09-17：要看得出是標題）。中文與數字分開定字級：中文佔欄寬
+# XLSX_FILL、上限 TITLE_MAX_SIZE；數字另外縮到塞得進欄寬（_digit_size），不拖累中文。
+# 整串排不下欄高時中文一起縮（行高照 VERTICAL_LINE_RATIO 估）。
+TITLE_MAX_SIZE = 32
 # 純半形字串（番號、日期、代碼、標題的 115）用 Tahoma，與 pdf_writer.DIGIT_FAMILY 一致（維護者選 Tahoma：好認、比 Verdana 省寬度）
 DIGIT_FONT_NAME = "Tahoma"
 
@@ -136,6 +139,8 @@ _NOTE = Alignment(horizontal="left", vertical="center", wrap_text=True)
 # 換行格（不能配「縮小字型」）裡的半形字：Tahoma 粗體數字比半個字寬，照 _em_width 估
 # 會被 Excel 折成「11／5」「2／7」（實測），多留四成五
 DIGIT_EM_SLACK = 1.45
+# 日期欄（縮小字型格）的半形寬度估計：比換行格的 1.45 緊，Excel 實測 1.2 時兩位數不會被縮
+DATE_EM_SLACK = 1.2
 
 
 def _digit_size(text: str, size: float, width_pt: float) -> float:
@@ -158,9 +163,13 @@ class FontPlan:
     name_row: float    # 姓名列高度
 
 
-def _fit(width_pt: float, height_pt: float, texts) -> float:
-    """讓 texts 裡最寬的字串橫書放進格子 XLSX_FILL 的字級。"""
-    widest = max((_em_width(t) for t in texts if t), default=1.0)
+def _fit(width_pt: float, height_pt: float, texts, digit_slack: float = 1.0) -> float:
+    """讓 texts 裡最寬的字串橫書放進格子 XLSX_FILL 的字級。
+
+    digit_slack：半形字串的寬度另外放大幾倍估（Tahoma 數字比半個字寬）。
+    """
+    widest = max((_em_width(t) * (digit_slack if t.isascii() else 1.0)
+                  for t in texts if t), default=1.0)
     size = min(XLSX_FILL * width_pt / widest, XLSX_FILL * height_pt / LINE_RATIO)
     return round(min(MAX_FONT_SIZE, max(6.0, size)), 1)
 
@@ -196,8 +205,11 @@ def font_plan(sheet: Sheet) -> FontPlan:
     coded = [c for c in sheet.columns if c.code]
     body = _fit(narrowest(lambda c: c.kind in (COL_MEMBER, COL_BLANK)) or 30, row_h,
                 {cell.text for c in data for cell in c.cells} | {"休", "00"})
+    # ⚠️ 日期欄要照 Tahoma 實際字寬估：估太大時 Excel 的「縮小字型」只縮兩位數
+    # （10～31），1～9 維持原字級，看起來大一截（維護者 2026-09-17 回報）。
     header = _fit(narrowest(lambda c: c in heads) or 30, row_h,
-                  {cell.text for c in heads for cell in c.cells} | {"00"})
+                  {cell.text for c in heads for cell in c.cells} | {"00"},
+                  digit_slack=DATE_EM_SLACK)
     code = _fit(narrowest(lambda c: bool(c.code)) or 30, CODE_ROW_HEIGHT,
                 {c.code for c in coded})
     return FontPlan(body=body, header=header, code=code, name=name, name_row=name_row)
@@ -374,6 +386,15 @@ def _write_note(ws: Worksheet, first: int, block: Block) -> None:
         )
 
 
+def title_sizes(pieces, width_pt: float) -> tuple[float, list[float]]:
+    """回傳（中文字級, 每段字級）。純計算，測試直接驗「中文比數字大」「不超出欄高」。"""
+    if not pieces:
+        return 0.0, []
+    size = round(min(TITLE_MAX_SIZE, XLSX_FILL * width_pt,
+                     PRINTABLE_H_PT / (len(pieces) * VERTICAL_LINE_RATIO)), 1)
+    return size, [_digit_size(p, size, width_pt) if p.isascii() else size for p in pieces]
+
+
 def _write_title_column(ws: Worksheet, index: int, sheet: Sheet, width_pt: float) -> None:
     """最左邊那一整欄：直書標題，從姓名列一路合併到最後一天。"""
     last = ROW_FIRST_DAY - 1 + sheet.day_count
@@ -381,16 +402,15 @@ def _write_title_column(ws: Worksheet, index: int, sheet: Sheet, width_pt: float
     # 疊起來，數字那行照樣橫排（維護者 2026-09-17）。換行不能配「縮小字型」，
     # 字級要自己保證最寬的那段（115）塞得進欄寬。
     pieces = vertical_pieces(sheet.title)
-    widest = max((_em_width(p) for p in pieces), default=1.0)
-    size = min(TITLE_FONT_SIZE, round(XLSX_FILL * width_pt / (widest * DIGIT_EM_SLACK), 1))
+    _, sizes = title_sizes(pieces, width_pt)
     cell = ws.cell(row=ROW_NAME, column=index)
     if pieces:
         # 每段換字型：數字段用 Tahoma。⚠️ 換行併在該段尾巴，單獨一段換行會讓檔案毀損
-        last = len(pieces) - 1
+        end = len(pieces) - 1
         cell.value = CellRichText(*(
-            TextBlock(InlineFont(rFont=_font_name(p), sz=size, b=True),
-                      p + ("" if i == last else "\n"))
-            for i, p in enumerate(pieces)
+            TextBlock(InlineFont(rFont=_font_name(p), sz=sz, b=True),
+                      p + ("" if i == end else "\n"))
+            for i, (p, sz) in enumerate(zip(pieces, sizes))
         ))
     cell.alignment = _STACKED
     cell.border = _BORDER

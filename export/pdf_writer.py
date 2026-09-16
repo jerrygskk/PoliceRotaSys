@@ -227,8 +227,7 @@ def paint_sheet(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
             width = unit_w * weight_of(column)
             if column.kind == COL_TITLE:
                 _paint_title_column(
-                    painter, QRectF(x, page.top(), width, page.height()),
-                    sheet.title, base_px,
+                    painter, QRectF(x, page.top(), width, page.height()), sheet.title
                 )
                 x += width
                 continue
@@ -351,9 +350,34 @@ def _draw_in_rect(painter: QPainter, rect: QRectF, text: str, centered: bool = T
     _draw_text(painter, QPointF(x, baseline), text)
 
 
-def _paint_title_column(
-    painter: QPainter, rect: QRectF, title: str, body_px: float
-) -> None:
+# 最左標題欄（維護者 2026-09-17：要看得出是標題）。中文與數字分開定字級：
+# 中文字寬佔欄寬 TITLE_FILL；「115」「10」這類數字另外縮到塞得進欄寬，
+# 不再拖累中文字變小。整串排不下欄高時，中文與數字一起等比縮。
+# ⚠️ 不加粗：字放大後程式描邊加粗會讓筆畫糊成一團（維護者 2026-09-17）。
+TITLE_FILL = 0.80
+TITLE_DIGIT_FILL = 0.85
+TITLE_LINE = 1.25      # 一行佔的高度 ÷ 中文字級（1.15 字字相黏，維護者 2026-09-17 嫌擠）
+
+
+def title_sizes(pieces, width: float, height: float, advance) -> tuple[float, list[float]]:
+    """回傳（中文字級, 每段字級）。advance(piece, px) 回傳該段在 px 字級下的寬度。
+
+    純計算、不畫圖，供測試直接驗「中文比數字大」「不超出欄高」。
+    """
+    if not pieces:
+        return 0.0, []
+    cjk = min(width * TITLE_FILL, height * 0.96 / (len(pieces) * TITLE_LINE))
+    sizes = []
+    for piece in pieces:
+        if piece.isascii():
+            wide = advance(piece, cjk)
+            sizes.append(cjk * min(1.0, width * TITLE_DIGIT_FILL / wide) if wide else cjk)
+        else:
+            sizes.append(cjk)
+    return cjk, sizes
+
+
+def _paint_title_column(painter: QPainter, rect: QRectF, title: str) -> None:
     """最左邊那一整欄：直書標題，跨全高。"""
     painter.setPen(_border_pen())
     painter.drawRect(rect)
@@ -361,19 +385,15 @@ def _paint_title_column(
         return
     # 數字（115、9）橫排佔一行，中文一字一行（vertical_pieces）
     pieces = vertical_pieces(title)
-    per_char = min(rect.width() * 0.8, rect.height() / max(1, len(pieces)))
-    px = min(body_px * 1.3, per_char * 0.9)
-    painter.setFont(_font(px, bold=True))
-    widest = max(QFontMetricsF(_for_text(painter.font(), p)).horizontalAdvance(p) for p in pieces)
-    if widest > rect.width() * 0.8:
-        px *= rect.width() * 0.8 / widest
-        painter.setFont(_font(px, bold=True))
-    metrics = painter.fontMetrics()
-    line_h = max(metrics.height(), per_char * 0.95)
+
+    def advance(piece, px):
+        return QFontMetricsF(_for_text(_font(px), piece)).horizontalAdvance(piece)
+
+    cjk, sizes = title_sizes(pieces, rect.width(), rect.height(), advance)
+    line_h = cjk * TITLE_LINE
     top = rect.top() + max(0.0, (rect.height() - line_h * len(pieces)) / 2)
-    base = painter.font()
-    for index, piece in enumerate(pieces):
-        painter.setFont(_for_text(base, piece))
+    for index, (piece, px) in enumerate(zip(pieces, sizes)):
+        painter.setFont(_for_text(_font(px), piece))
         _draw_in_rect(
             painter, QRectF(rect.left(), top + index * line_h, rect.width(), line_h), piece)
 

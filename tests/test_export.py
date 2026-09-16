@@ -490,6 +490,18 @@ class TestXlsxFontSizes(_TempDirCase):
         self.assertTrue(name.alignment.shrink_to_fit)
         self.assertEqual(day.font.sz, xlsx_writer.font_plan(sheet).body)
 
+    def test_two_digit_dates_fit_without_excel_shrinking_them(self):
+        """日期字級估太大時，Excel 只把 10～31 縮小，1～9 看起來大一截（維護者 2026-09-17）。
+        兩位數照 Tahoma 實際字寬（DATE_EM_SLACK）估也要放得進最窄的日期欄。"""
+        from lib.layout_model import COL_DATE
+        sheet = sample_sheet()
+        plan = xlsx_writer.font_plan(sheet)
+        widths = xlsx_writer.column_widths(sheet)
+        narrowest = min(xlsx_writer._width_to_points(w)
+                        for c, w in zip(sheet.columns, widths) if c.kind == COL_DATE)
+        need = plan.header * xlsx_writer._em_width("31") * xlsx_writer.DATE_EM_SLACK
+        self.assertLessEqual(need, xlsx_writer.XLSX_FILL * narrowest + 1e-6)
+
 
 class TestNameRowHeight(unittest.TestCase):
     """⚠️ Excel 放不下就是切掉，而且不會有任何警告。
@@ -620,9 +632,6 @@ class TestBothRenderersAgree(_TempDirCase):
         self.assertNotIn("import rota", source)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TestVerticalPieces(unittest.TestCase):
     """直書時數字、英文併成一行橫排（xlsx 與 pdf 共用）。"""
@@ -635,3 +644,53 @@ class TestVerticalPieces(unittest.TestCase):
     def test_date_header_has_a_gap(self):
         from lib.layout_model import GAP_CHAR, date_column
         self.assertEqual(date_column(2026, 10, 31).header, f"日{GAP_CHAR * 2}期")
+
+
+class TestTitleColumnSizes(unittest.TestCase):
+    """最左標題欄：中文與數字分開定字級（維護者 2026-09-17：標題要放大）。"""
+
+    LONG_UNIT = "○" * 20   # 單位名稱字數上限（settings_panels.TitlePanel.UNIT_MAX）
+
+    def _pieces(self, unit=UNIT):
+        from lib.layout_model import sheet_title, vertical_pieces
+        return vertical_pieces(sheet_title(unit, 2026, 10))
+
+    def test_xlsx_chinese_is_larger_than_the_year_digits(self):
+        pieces = self._pieces()
+        cjk, sizes = xlsx_writer.title_sizes(pieces, 30.0)
+        self.assertLess(sizes[pieces.index("115")], cjk)
+        self.assertEqual(sizes[pieces.index("年")], cjk)
+
+    def test_xlsx_long_unit_name_fits_the_column_height(self):
+        pieces = self._pieces(self.LONG_UNIT)
+        cjk, _ = xlsx_writer.title_sizes(pieces, 30.0)
+        self.assertLessEqual(len(pieces) * cjk * xlsx_writer.VERTICAL_LINE_RATIO,
+                             xlsx_writer.PRINTABLE_H_PT + 1)
+
+    def test_xlsx_title_merges_down_to_the_last_day(self):
+        """舊寫法變數撞名，合併只到第 N 列（N＝標題段數），沒有到月底。"""
+        with tempfile.TemporaryDirectory() as folder:
+            path = str(Path(folder) / "t.xlsx")
+            sheet = sample_sheet()
+            xlsx_writer.write_sheet(sheet, path)
+            ws = load_workbook(path).active
+        ranges = [r for r in ws.merged_cells.ranges if r.min_col == 1 and r.max_col == 1]
+        self.assertEqual(len(ranges), 1)
+        self.assertEqual(ranges[0].max_row, xlsx_writer.ROW_FIRST_DAY - 1 + sheet.day_count)
+
+    @unittest.skipUnless(HAS_QT, "需要 PySide6")
+    def test_pdf_chinese_is_larger_and_fits_the_height(self):
+        def advance(piece, px):   # 半形估半個字寬、中文一個字寬
+            return sum(0.6 if c.isascii() else 1.0 for c in piece) * px
+
+        for unit in (UNIT, self.LONG_UNIT):
+            pieces = self._pieces(unit)
+            cjk, sizes = pdf_writer.title_sizes(pieces, 40.0, 1000.0, advance)
+            self.assertLess(sizes[pieces.index("115")], cjk)
+            self.assertLessEqual(len(pieces) * cjk * pdf_writer.TITLE_LINE, 1000.0 + 1e-6)
+            self.assertLessEqual(advance("115", sizes[pieces.index("115")]),
+                                 40.0 * pdf_writer.TITLE_DIGIT_FILL + 1e-6)
+
+
+if __name__ == "__main__":
+    unittest.main()
