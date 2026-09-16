@@ -526,6 +526,37 @@ QLabel#cardHint {
     font-size: 12pt;
     color: #636366;
 }
+/* 字數逼近上限、備份狀態異常（維護分頁）：用 card.setTone 切換 */
+QLabel#cardHint[tone="near"] {
+    color: #d35400;
+}
+QLabel#cardHint[tone="warn"] {
+    color: #c0392b;
+}
+/* 左側選單＋右側內容（ui_utils/side_nav.py，維護分頁）：選單本身外觀同卡片，
+   選中項用主要按鈕的淺藍（ui_common.BTN_CONFIRM），滑鼠移上去同分頁標籤的灰 */
+QFrame#sideNav {
+    background-color: #ffffff;
+    border: 1px solid #c7c7cc;
+    border-radius: 10px;
+}
+QPushButton#sideNavItem {
+    background-color: transparent;
+    color: #3a3a3c;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 500;
+}
+QPushButton#sideNavItem:hover:!checked {
+    background-color: #e5e5ea;
+}
+QPushButton#sideNavItem:checked {
+    background-color: #D0ECF5;
+    color: #000000;
+    font-weight: 600;
+}
 QLabel#infoBanner {
     background-color: #e3edf8;
     color: #274b72;

@@ -236,3 +236,5 @@ docs/handover.md
 # 本機資料庫（真實資料，不入庫）
 dbfile.db
 dbfile.db-journal
+# 資料庫備份（開機自動備份與手動備份，真實資料）
+backups/

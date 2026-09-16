@@ -1,9 +1,10 @@
-"""警察勤務輪番表產生器：程式進入點。
+"""勤休預定表產生器：程式進入點。
 
-開機流程：建立／補齊資料庫結構 → 第一次開啟時塞入種子資料（假名模板＋一份輪番草稿）
-→ 套全域公版樣式 → 開主視窗。
+開機流程：檢查資料庫有沒有損毀 → 建立／補齊資料庫結構 → 第一次開啟時塞入種子資料
+（假名名單＋一份輪番模板）→ 自動備份（GFS）→ 套全域公版樣式 → 開主視窗。
 
-⚠️ 目前有「輪番設定」「人員」分頁；產生月表／維護兩頁依序補上（DEVELOPER §4）。
+⚠️ 先檢查、再補結構、最後才備份（PoliceDocSys 同一順序）：對已損毀的檔做 ALTER 會
+增加搶救難度；損毀的檔拿去備份會被輪替進 GFS、擠掉還好的舊備份。
 """
 import logging
 import os
@@ -12,16 +13,17 @@ import sys
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget
 
-from lib import db_schema, db_seed
-from lib.db_utils import opened
+from lib import db_backup, db_schema, db_seed
+from lib.db_utils import KEY_BACKUP_SECOND_DIR, get_setting, opened
 from lib.theme import APPLE_STYLE
 from lib.version import __version__
 from lib.window_geometry import apply_startup_geometry
 from res import resources_rc  # noqa: F401  註冊 Qt resource（下拉箭頭、勾選框圖示）
 from tabs.tab_generate import TabGenerate
+from tabs.tab_maintenance import TabMaintenance
 from tabs.tab_personnel import TabPersonnel
 from tabs.tab_rules import TabRules
-from ui_utils import installDateEditInputGuard
+from ui_utils import installDateEditInputGuard, msgCritical
 
 APP_NAME = "勤休預定表產生器"
 DB_NAME = "dbfile.db"
@@ -41,6 +43,29 @@ def setup_logging(log_path):
         filename=log_path, filemode="a", encoding="utf-8", level=logging.ERROR,
         format="%(asctime)s %(levelname)s %(message)s",
     )
+
+
+def database_is_healthy(db_path):
+    """每次開機快速檢查、每週第一次開機完整檢查。鎖定等無法判定的情況一律放行。"""
+    return db_backup.quick_check(db_path) and db_backup.deep_check_if_due(db_path)
+
+
+def run_auto_backup(db_path):
+    """開機自動備份（主備份＋有設定時的異地位置）；任何失敗都不擋開程式。"""
+    try:
+        with opened(db_path) as conn:
+            second = get_setting(conn, KEY_BACKUP_SECOND_DIR).strip()
+    except Exception:
+        logging.error("讀取異地備份位置失敗", exc_info=True)
+        second = ""
+    db_backup.run_auto_backup(db_path, extra_dirs=[second] if second else None)
+
+
+CORRUPT_MESSAGE = (
+    "資料庫檔案疑似損毀，為避免損壞擴大，程式將關閉，今天也不會進行自動備份。\n\n"
+    "請聯絡維護人員：可從程式旁的 backups 資料夾取回最近的備份檔，"
+    "改名為 dbfile.db 後蓋回程式旁的同名檔。"
+)
 
 
 def prepare_database(db_path):
@@ -66,6 +91,8 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.tab_rules, "輪番設定")
         self.tab_personnel = TabPersonnel(db_path)
         self.tabs.addTab(self.tab_personnel, "人員設定")
+        self.tab_maintenance = TabMaintenance(db_path)
+        self.tabs.addTab(self.tab_maintenance, "維護")
         self.setCentralWidget(self.tabs)
 
     def closeEvent(self, event):
@@ -78,12 +105,17 @@ class MainWindow(QMainWindow):
 def main():
     db_path = db_file_path()
     setup_logging(os.path.join(os.path.dirname(db_path), LOG_NAME))
-    prepare_database(db_path)
 
     app = QApplication(sys.argv)
     installDateEditInputGuard(app)
     app.setFont(QFont("Microsoft JhengHei", 14))
     app.setStyleSheet(APPLE_STYLE)
+
+    if not database_is_healthy(db_path):
+        msgCritical("資料庫需要修復", CORRUPT_MESSAGE)
+        return 1
+    prepare_database(db_path)
+    run_auto_backup(db_path)
 
     win = MainWindow(db_path)
     # 開窗前依「實際可用桌面範圍」（已扣工作列）收斂尺寸／位置，避免縮放倍率、
