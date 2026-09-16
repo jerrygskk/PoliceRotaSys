@@ -32,6 +32,8 @@ MANIFEST
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# 本專案的打包設定是原始碼、要入庫（CLI 砍不掉 hook 收進來的 DLL；不入庫也無法重現舊版 build）
+!PoliceRotaSys.spec
 
 # Installer logs
 pip-log.txt

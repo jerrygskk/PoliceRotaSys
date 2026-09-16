@@ -111,6 +111,6 @@
 
 - **push 前必跑 `python -m unittest tests.test_no_pii`**（防真實人名；public repo 尤其致命）
 - **勿手改 `lib/version.py`**：進版一律走 `tools/bump_version.py`；進位與否**他決定**
-- 打包**只用 onefile**、每次砍 spec 全新 build
+- 打包**只用 onefile**；spec **已入庫**（`PoliceRotaSys.spec`，是原始碼不是產物），build 一律 `python -m PyInstaller --clean --noconfirm PoliceRotaSys.spec`，排除清單只改 `tools/pyi_prune.py`（DEVELOPER §10）
 - commit 訊息正文**手動斷行斷在約 40 個全形字**（≈ 終端機 80 欄）
 - 踩雷類改動把**症狀與根因**寫進 commit 正文，那是往後 `PITFALLS.md` 條目的素材

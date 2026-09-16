@@ -108,4 +108,4 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 - [ ] `tabs/` 產生月表、維護兩個分頁與配對彈窗
 - [ ] `lib/print_canvas.py` 與列印三層驗收網
 - [x] `lib/version.py` ＋ `tools/bump_version.py`（產品名改為本專案、拿掉獨立版與 README 版號同步；起始 0.1.0）
-- [ ] PyInstaller 打包
+- [x] PyInstaller 打包（spec 入庫＋`tools/pyi_prune.py` 瘦身，DEVELOPER §10）

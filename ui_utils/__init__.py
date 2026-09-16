@@ -3,7 +3,7 @@
 # 不論內部如何拆分，這裡都不需要改動外部呼叫端
 
 from .ui_common import (
-    msgInfo, msgWarning, msgCritical, confirmBox, loadUi,
+    msgInfo, msgWarning, msgCritical, confirmBox,
     friendlyErrorMessage, reportError,
     BTN_CONFIRM, BTN_DANGER, BTN_CANCEL, BTN_ROW_SPACING, styleButton,
 )
@@ -29,7 +29,7 @@ from .table import (
 )
 
 __all__ = [
-    "msgInfo", "msgWarning", "msgCritical", "confirmBox", "loadUi",
+    "msgInfo", "msgWarning", "msgCritical", "confirmBox",
     "friendlyErrorMessage", "reportError",
     "BTN_CONFIRM", "BTN_DANGER", "BTN_CANCEL", "BTN_ROW_SPACING", "styleButton",
     "setupFilterCombo", "refreshFilterCombo", "attachComboHint",

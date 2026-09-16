@@ -141,6 +141,23 @@
   提供，**發行名稱與 import 名稱不同**。查版本時兩個都要試，否則會誤判成沒裝
   而靜默跳過檢查。
 
+#### PKG：打包
+
+- **PKG-1**: **onefile exe 50MB，六成是用不到的 Qt 元件** → PySide6 的 PyInstaller hook
+  照單全收：`opengl32sw.dll`（20MB）、QML／Quick、`Qt6Pdf`、`Qt6Network`、多餘圖片
+  格式與語系檔。這些是以 **binary 身分**收進來的，`--exclude-module` 砍不掉，只能在
+  spec 裡過濾 `a.binaries`／`a.datas`（`tools/pyi_prune.py`）。瘦身後約 27MB。
+  ⚠️ 所以 spec 要入庫（DEVELOPER §10）。
+- **PKG-2**: **沒人呼叫的 `loadUi` 讓 OpenGL 整串砍不掉** → `ui_utils` 從公文系統搬來時
+  留著 `from PySide6.QtUiTools import QUiLoader`；UiTools 連結期硬性需要
+  `Qt6OpenGLWidgets`／`Qt6OpenGL`，跟程式有沒有用 OpenGL 無關。本專案不用 `.ui` 檔，
+  已拿掉。⚠️ 反過來說：日後若有人加回 QtUiTools，`pyi_prune` 砍 OpenGL 會讓打包版
+  **開機就 `ImportError: DLL load failed`**，原始碼跑卻完全正常。
+- **PKG-3**: **打包版多出 `libcrypto-3-x64.dll`／`libssl-3-x64.dll`** → 打包機 PATH 上有
+  Git for Windows 時，PyInstaller 從 `C:\Program Files\Git\mingw64\bin` 撿到那份
+  OpenSSL（公文系統 PKG-6 同一件事）。由 `pyi_prune` 依**來源路徑**濾掉；不要改成
+  「build 前記得清 PATH」，靠人記得的做法換台機器就失效。
+
 #### TST：測試
 
 - **TST-1**: **用純文字搜尋檢查「有沒有用到某套件」，被自己的註解抓到**

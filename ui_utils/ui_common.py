@@ -1,13 +1,14 @@
 # ui_utils/ui_common.py
-# 通用 UI 元件：Dialog 按鈕樣式常數、訊息／確認彈窗、.ui 載入。
+# 通用 UI 元件：Dialog 按鈕樣式常數、訊息／確認彈窗。
+# ⚠️ 不再提供 .ui 載入（loadUi）：本專案畫面一律程式碼排版，而 QtUiTools 一 import
+# 就會把 Qt6UiTools → Qt6OpenGLWidgets → Qt6OpenGL 整串連結期相依拉進打包。
 # 原本散在 lib/db_utils.py，與資料庫邏輯混雜；集中到此，db_utils 回歸純資料層。
 # 只依賴 PySide6，不 import 專案其他模組（避免循環匯入）。
 
 import html as _html
 
 from PySide6.QtWidgets import QMessageBox, QSpacerItem, QSizePolicy, QGridLayout
-from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, Qt
+from PySide6.QtCore import Qt
 
 
 # ── Dialog 按鈕樣式常數 ───────────────────────────────────────
@@ -133,19 +134,3 @@ def confirmBox(title, text, confirm_text="確認", cancel_text="取消",
     msg.setEscapeButton(btn_cancel)
     msg.exec()
     return msg.clickedButton() == btn_ok
-
-
-def loadUi(path):
-    """載入 .ui 檔案，回傳 widget；找不到檔案時彈出錯誤並回傳 None"""
-    f = QFile(path)
-    if not f.exists():
-        msgCritical("錯誤", f"找不到 UI 檔案: {path}")
-        return None
-    f.open(QFile.ReadOnly)
-    loader = QUiLoader()
-    # 註冊自訂元件，讓 .ui 內 class="NullableDateEdit" 被正確建立
-    from .widgets import NullableDateEdit
-    loader.registerCustomWidget(NullableDateEdit)
-    widget = loader.load(f)
-    f.close()
-    return widget
