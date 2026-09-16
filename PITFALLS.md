@@ -15,6 +15,14 @@
   所以**照樣全綠**。已移除該行並在 `.gitignore` 留註解。
   ⚠️ 新增頂層目錄時順手 `git check-ignore -v <路徑>` 確認一下。
 
+#### DB：資料庫
+
+- **DB-1**: **新版一開舊資料庫就出錯（群組讀不出來）** → `CREATE TABLE IF NOT EXISTS`
+  不會替既有的表補欄位，新版程式查 `code_position` 時舊庫沒有這欄。開發機刪庫重建
+  永遠測不出來，只有現場的舊庫會壞（v0.1.0-beta 第二版踩過）。正解：新欄位登記到
+  `db_schema._LATE_COLUMNS`，開庫時 `PRAGMA table_info` 檢查、缺就 `ALTER TABLE ADD COLUMN`。
+  ⚠️ 發版前拿一份**舊版產生的資料庫**開新版 exe 試一次。
+
 #### LAY：版面
 
 - **LAY-1**: **整張表的軸向做反（日期當欄、姓名當列）** → 紙本是**旋轉 90°

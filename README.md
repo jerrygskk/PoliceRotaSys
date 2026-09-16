@@ -6,6 +6,7 @@
 > 目前為 **v0.1.0 beta（試用版）**，執行檔下載：
 > [Releases](https://github.com/jerrygskk/PoliceRotaSys/releases)。
 > 資料存在 exe 旁的 `dbfile.db`，換電腦或更新版本時要一起帶走。
+> 更新版本時把新 exe 放在原本資料庫旁邊開啟即可，缺少的欄位會自動補上（建議先備份一份）。
 
 ## 這支程式在做什麼
 

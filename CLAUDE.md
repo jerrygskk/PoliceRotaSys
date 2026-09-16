@@ -112,6 +112,7 @@
 ### C. 版本 / Git / 發布
 
 - **push 前必跑 `python -m unittest tests.test_no_pii`**（防真實人名；public repo 尤其致命）
+- ⚠️ **beta 已發出，現場資料庫不能刪**：加欄位要登記 `db_schema._LATE_COLUMNS`；發版前拿舊庫開新版 exe 試一次（DEVELOPER §3、PITFALLS DB-1）
 - **勿手改 `lib/version.py`**：進版一律走 `tools/bump_version.py`；進位與否**他決定**
 - 打包**只用 onefile**；spec **已入庫**（`PoliceRotaSys.spec`，是原始碼不是產物），build 一律 `python -m PyInstaller --clean --noconfirm PoliceRotaSys.spec`，排除清單只改 `tools/pyi_prune.py`（DEVELOPER §10）
 - commit 訊息正文**手動斷行斷在約 40 個全形字**（≈ 終端機 80 欄）
