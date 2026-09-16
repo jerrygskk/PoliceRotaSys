@@ -22,6 +22,14 @@
   永遠測不出來，只有現場的舊庫會壞（v0.1.0-beta 第二版踩過）。正解：新欄位登記到
   `db_schema._LATE_COLUMNS`，開庫時 `PRAGMA table_info` 檢查、缺就 `ALTER TABLE ADD COLUMN`。
   ⚠️ 發版前拿一份**舊版產生的資料庫**開新版 exe 試一次。
+- **DB-2**: **備份把損毀的資料庫輪替進去，擠掉還好的舊備份**（PoliceDocSys 的教訓，搬備份時一併帶來）
+  → 開機一律**先檢查、再補結構、最後才備份**：`quick_check` 每次、`integrity_check` 每週一次，
+  明確損毀就不備份、不開程式。⚠️ `OperationalError`（鎖定／忙線）是 `DatabaseError` 的子類，
+  要先攔下當「無法判定」放行，否則會把「資料庫忙線中」誤判成損毀。
+- **DB-3**: **異地備份選網路分享根目錄（`\\server\share`），每次開機都靜默失敗**
+  → Windows 對分享根目錄的 `os.makedirs(..., exist_ok=True)` 回 WinError 50，**資料夾明明存在也照樣拋**
+  （`exist_ok` 只吞 `FileExistsError`）。正解：先 `os.path.isdir` 判斷存在就放行
+  （`db_backup.ensure_dir`）。錯誤原因一律用錯誤碼判斷，不比對訊息文字（不同語系 Windows 文字不同）。
 
 #### LAY：版面
 
@@ -118,6 +126,14 @@
 - **XLS-6**: **Excel 打不開 openpyxl 寫的檔（COM `Workbooks.Open` 失敗）** →
   CellRichText 裡有一段**只含換行**的 TextBlock，存檔時被當空白吃成空字串，Excel 判定毀損。
   換行併進前後的文字段。⚠️ 用 COM 轉 PDF 驗證時要先刪舊 PDF，否則轉檔失敗會看到舊圖。
+- **XLS-7**: **Excel 最左標題欄只合併到一半（A1:A18），下半截是空格子** → `_write_title_column`
+  用 `last` 存「合併到第幾列」，中途又拿同一個名字存「最後一段的索引」，合併範圍就變成標題段數。
+  PDF 與預覽不受影響，只有 Excel 看得到；測試只驗了儲存格內容沒驗合併範圍（2026-09-17 放大標題時發現）。
+  改名 `end`，並補 `TestTitleColumnSizes.test_xlsx_title_merges_down_to_the_last_day`。
+- **XLS-8**: **Excel 日期 1～9 比 10～31 大一截** → 日期欄字級照「半形＝半個字寬」估，Tahoma 兩位數
+  實際更寬，Excel 的「縮小字型以適合欄寬」**只縮放不下的格子**，一位數維持原字級。每格各縮各的，
+  整欄就大小不一。正解：字級估算時半形寬度乘 `DATE_EM_SLACK`，讓最寬的兩位數本來就放得下。
+  ⚠️ 縮小字型是兜底，不能靠它統一字級。
 
 #### QT：Qt 與 PDF 輸出
 

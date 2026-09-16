@@ -107,7 +107,8 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 - [x] `main.py` 最小主程式＋人員分頁（比照 PoliceDocSys 人員管理搬入）
 - [x] 輪番設定分頁（群組表與人員分頁共用 `ui_utils/sort_table.py` 排序表格公版）
 - [x] 產生月表分頁、配對彈窗、預覽（`tabs/tab_generate.py`、`ui_utils/pairing_dialog.py`、`ui_utils/sheet_preview.py`）
-- [ ] 維護分頁（備份資料庫、更換匯出資料夾、VACUUM）
+- [x] 維護分頁（`tabs/tab_maintenance.py`）：月表標題、資料庫備份、壓縮；`lib/db_backup.py` 自 PoliceDocSys 搬入
+      開機損毀檢查＋GFS 自動備份＋異地位置，拿掉還原／救援視窗／筆數預覽。匯出資料夾設定改為預設桌面、不記住
 - [ ] `lib/print_canvas.py` 與列印三層驗收網
 - [x] `lib/version.py` ＋ `tools/bump_version.py`（產品名改為本專案、拿掉獨立版與 README 版號同步；起始 0.1.0）
 - [x] PyInstaller 打包（spec 入庫＋`tools/pyi_prune.py` 瘦身，DEVELOPER §10）
