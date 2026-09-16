@@ -18,6 +18,7 @@ from lib.theme import APPLE_STYLE
 from lib.version import __version__
 from lib.window_geometry import apply_startup_geometry
 from res import resources_rc  # noqa: F401  註冊 Qt resource（下拉箭頭、勾選框圖示）
+from tabs.tab_generate import TabGenerate
 from tabs.tab_personnel import TabPersonnel
 from tabs.tab_rules import TabRules
 from ui_utils import installDateEditInputGuard
@@ -59,6 +60,8 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         # 分頁順序照使用頻率（DEVELOPER §4）：產生月表／輪番設定／人員設定／維護
+        self.tab_generate = TabGenerate(db_path)
+        self.tabs.addTab(self.tab_generate, "產生月表")
         self.tab_rules = TabRules(db_path)
         self.tabs.addTab(self.tab_rules, "輪番設定")
         self.tab_personnel = TabPersonnel(db_path)

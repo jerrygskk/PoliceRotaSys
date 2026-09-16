@@ -13,6 +13,7 @@ from .widgets import (
     setupNullableDateEdit, NullableDateEdit,
     normalizeDateText, classifyNullableDate,
     refreshFilterCombo, runWithBusy, preserveScroll, attachComboHint,
+    installComboWheelGuard,
     RowHoverFilter, RowHoverDelegate, LinkCursorFilter, TwoLineElideLabel,
 )
 from .table import (
@@ -36,7 +37,7 @@ __all__ = [
     "installDateEditWheelGuard", "installDateEditInputGuard",
     "setupNullableDateEdit", "NullableDateEdit",
     "normalizeDateText", "classifyNullableDate",
-    "runWithBusy", "preserveScroll",
+    "runWithBusy", "preserveScroll", "installComboWheelGuard",
     "RowHoverFilter", "RowHoverDelegate", "LinkCursorFilter", "TwoLineElideLabel",
     "setupPreviewTable", "autoResizeTable", "applyNoElide",
     "makeDeleteBtn", "refreshDeleteBtns", "setDocIdLinkCell", "applyLinkStyle",

@@ -75,7 +75,7 @@ def load_snapshot(conn: sqlite3.Connection, year: int, month: int) -> dict:
     """讀某月的快照。找不到月表就 raise。"""
     plan = get_plan(conn, year, month)
     if plan is None:
-        raise PlanError(f"{year} 年 {month} 月還沒有月表")
+        raise PlanError(f"{year - 1911} 年 {month} 月還沒有月表")
     return json.loads(plan["snapshot"])
 
 
@@ -150,7 +150,7 @@ def _insert_plan(
     conn: sqlite3.Connection, year: int, month: int, origin: str, snapshot: dict
 ) -> int:
     if get_plan(conn, year, month) is not None:
-        raise PlanError(f"{year} 年 {month} 月已經有月表了，要重產請先刪除")
+        raise PlanError(f"{year - 1911} 年 {month} 月已經有月表了，要重產請先刪除")
     cur = conn.execute(
         "INSERT INTO Month_Plan(year, month, origin, created_at, snapshot) "
         "VALUES (?, ?, ?, ?, ?)",
@@ -187,7 +187,7 @@ def chain_blocked_reason(
     """
     if previous_plan(conn, year, month) is None:
         prev_y, prev_m = _prev_year_month(year, month)
-        return f"{prev_y} 年 {prev_m} 月沒有月表可以接續"
+        return f"{prev_y - 1911} 年 {prev_m} 月沒有月表可以接續"   # 畫面一律民國
     return None
 
 
@@ -272,6 +272,65 @@ def _assert_seeds_complete(
             shown = "、".join(str(seq) for seq in missing[:5])
             more = f" 等 {len(missing)} 格" if len(missing) > 5 else ""
             raise PlanError(f"「{row['name']}」還有格位沒配人：第 {shown} 格{more}")
+
+
+# --------------------------------------------------------------------------
+# 配對彈窗的預填（不寫資料庫，只算出建議的配對給畫面帶入）
+# --------------------------------------------------------------------------
+
+def active_members(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """在職人員，依人員分頁的顯示順序。配對彈窗的下拉只列這些人。"""
+    return conn.execute(
+        "SELECT member_id, name, female FROM Member WHERE active = 1 "
+        "ORDER BY sort_order, member_id"
+    ).fetchall()
+
+
+def pairable_groups(conn: sqlite3.Connection, template_id: int) -> list[tuple[sqlite3.Row, Group]]:
+    """要配人的群組（空白欄不配人），依模板順序。"""
+    loaded = {g.name: g for g in template.load_groups(conn, template_id)}
+    return [
+        (row, loaded[row["name"]])
+        for row in template.group_rows(conn, template_id)
+        if row["mode"] != MODE_BLANK
+    ]
+
+
+def prefill_from_previous(
+    conn: sqlite3.Connection, year: int, month: int, template_id: int
+) -> tuple[dict[int, dict[int, int]], list[str]]:
+    """「接續上月填入」：把上月推到本月 1 日的站位，套到這份模板上。
+
+    回傳 ``(配對, 沒辦法沿用的群組名稱)``。
+
+    ⚠️ 只沿用**名稱相同、且每格代碼與休完全一樣**的群組。格數一樣但休移了位，
+    站位就完全不能沿用——硬套的話月表印出來看不出錯。對不上的群組整組留空，
+    名稱回傳給畫面告訴承辦人。
+
+    人用**姓名**對回目前的在職名單：快照裡存的是姓名，離職或改名的人對不到，
+    那一格就留空讓承辦人補。
+    """
+    snapshot = chained_snapshot(conn, year, month)
+    previous = {data["name"]: data for data in snapshot["groups"]}
+    by_name = {row["name"]: row["member_id"] for row in active_members(conn)}
+
+    seeds: dict[int, dict[int, int]] = {}
+    skipped: list[str] = []
+    used: set[int] = set()
+    for row, group in pairable_groups(conn, template_id):
+        data = previous.get(row["name"])
+        if data is None or snapshot_to_group(data).slots != group.slots:
+            skipped.append(row["name"])
+            continue
+        members: dict[int, int] = {}
+        for member in data["members"]:
+            member_id = by_name.get(member["name"])
+            if member_id is None or member_id in used:
+                continue
+            members[member_id] = member["slot_seq"]
+            used.add(member_id)
+        seeds[row["group_id"]] = members
+    return seeds, skipped
 
 
 def delete_plan(conn: sqlite3.Connection, year: int, month: int) -> None:

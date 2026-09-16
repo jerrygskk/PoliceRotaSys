@@ -110,12 +110,18 @@ def write_sheet(sheet: Sheet, path: str) -> None:
             inset, inset, -inset, -inset
         )
         painter.setPen(QPen(QColor("#000000"), BORDER_PX))
-        _paint(painter, page, sheet)
+        paint_sheet(painter, page, sheet)
     finally:
         painter.end()
 
 
-def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
+def paint_sheet(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
+    """把整張月表畫進 ``page`` 這個矩形。
+
+    PDF 與畫面上的預覽**共用這一支**（``ui_utils/sheet_preview.py``）：預覽長什麼樣，
+    印出來就長什麼樣，不另寫一份畫表程式。字級全部由格子幾何算出，所以畫在
+    任何大小的矩形上都成立。
+    """
     columns = sheet.columns
     if not columns:
         return

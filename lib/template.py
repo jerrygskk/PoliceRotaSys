@@ -20,7 +20,7 @@ from lib.rota import (
 # 輪番 1.1、固定番與幹部 1.2；手寫的空白欄暫用 1.2。
 WEIGHT_BY_MODE = {MODE_ROTATE: 1.1, MODE_FIXED: 1.2, MODE_BLANK: 1.2}
 
-MODE_LABELS = {MODE_ROTATE: "輪番", MODE_FIXED: "固定", MODE_BLANK: "空白欄"}
+MODE_LABELS = {MODE_ROTATE: "輪番", MODE_FIXED: "固定番", MODE_BLANK: "空白欄"}
 
 # 群組名稱字數上限（維護者裁示 2026-09-16）。實測（微軟正黑體 14pt、125%、1440 寬）：
 # 輪番群組的勤休卡片標題列 7 字以內版面不動，8～12 字擠窄左側模板卡片，

@@ -11,6 +11,34 @@ from PySide6.QtGui import (
 from lib.theme import HINT_COLOR, TEXT_COLOR
 
 
+class _ComboWheelGuard(QObject):
+    """下拉選單不吃滾輪：滑鼠滾過去不會靜默改掉選項。
+
+    ⚠️ 與日期框同一類雷：游標剛好停在下拉上捲頁面，選項就被換掉，畫面變化細微、
+    看不出來。配對彈窗一整欄都是人員下拉，捲表格時一定會滾過去。
+    forward_to 有給時把滾輪轉給它（例如表格的 viewport），讓畫面照樣捲得動。
+    """
+
+    def __init__(self, combo, forward_to=None):
+        super().__init__(combo)
+        self._forward_to = forward_to
+
+    def eventFilter(self, obj, event):
+        if event.type() != QEvent.Wheel:
+            return False
+        if self._forward_to is not None:
+            from PySide6.QtWidgets import QApplication
+            QApplication.sendEvent(self._forward_to, event)
+        return True
+
+
+def installComboWheelGuard(combo, forward_to=None):
+    """讓 combo 不再因滾輪改值。回傳 filter（掛在 combo 底下，不必另外保存）。"""
+    guard = _ComboWheelGuard(combo, forward_to)
+    combo.installEventFilter(guard)
+    return guard
+
+
 def runWithBusy(parent, func, text="更新中，請稍候…", min_ms=350):
     """顯示無邊框「更新中」提示，同步執行 func（阻塞主執行緒）後自動關閉，回傳 func() 結果。
 

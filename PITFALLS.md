@@ -115,6 +115,17 @@
 - **QT-2**: **`QPdfWriter` 匯出時沒有 `QApplication` 會當掉**
   → 匯出 PDF 不需要完整的 `QApplication`，但**需要 `QGuiApplication`** 才能量字。
   `export/pdf_writer.py` 自己確保有一個，呼叫端不必先開。
+- **QT-3**: **下拉／輸入框一取得焦點就切字（月份「10」變「1C」）**
+  → 公版樣式焦點時外框 1px → 2px，內距沒跟著減，文字區每邊少 1px；寬度由
+  `sizeHint` 算得剛好的元件就被吃掉尾字。PoliceDocSys 陳報頁踩過同一件事。
+  正解在全域公版 `lib/theme.py`：**`:focus` 外框加粗幾 px，內距就減幾 px**
+  （彈窗內另有一組內距，`QDialog QComboBox:focus` 等要一起補）。寬度剛好的
+  下拉再給 `setMinimumWidth` 留餘裕——125% 下 `sizeHint` 本來就不準。
+- **QT-4**: **套了樣式表的 `QTableWidget`，`item.setBackground()` 畫面上看不到**
+  → 表格公版 `TABLE_SS` 有 `QTableWidget::item` 規則，Qt 改走樣式表繪製後就不畫
+  模型的 BackgroundRole；資料確實設進去了（讀得回來），只是沒畫。要標色的表格
+  掛一個先 `fillRect` 底色再畫文字的 delegate（`pairing_dialog._BackgroundDelegate`）。
+  ⚠️ 單元測試讀 `item.background()` 會通過，**只有截圖看得出來**。
 
 #### ENV：環境與相依
 

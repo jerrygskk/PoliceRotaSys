@@ -31,7 +31,7 @@ from ui_utils.sort_table import makeHandleItem, makeItem, makeSeqItem, setupSort
 from ui_utils.text_dialog import askText
 
 _HANDLE_COL, _SEQ_COL, _NAME_COL, _MODE_COL, _KIND_COL, _EXPR_COL, _DATE_COL = range(7)
-_HEADERS = ("", "序號", "名稱", "模式", "型態", "範圍", "左側日期")
+_HEADERS = ("", "序號", "群組名稱", "模式", "型態", "範圍", "左側日期")
 _KIND_LABELS = {KIND_NUM: "數字", KIND_ALPHA: "英文", KIND_CJK: "天干"}
 
 SLOTS_PER_ROW = 10

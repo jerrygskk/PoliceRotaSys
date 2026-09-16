@@ -71,6 +71,13 @@ QDialog QLineEdit, QDialog QComboBox, QDialog QDateEdit {
 QDialog QComboBox, QDialog QDateEdit {
     padding: 4px 32px 4px 8px;
 }
+/* 彈窗內的焦點內距：同上，外框加粗 1px 就減 1px（特異度高於 QComboBox:focus，順序不影響） */
+QDialog QLineEdit:focus {
+    padding: 3px 7px;
+}
+QDialog QComboBox:focus, QDialog QDateEdit:focus {
+    padding: 3px 31px 3px 7px;
+}
 
 /* ── 標籤 ── */
 QLabel {
@@ -126,8 +133,12 @@ QLineEdit {
     color: #1c1c1e;
     selection-background-color: #8fa8c8;
 }
+/* ⚠️ 焦點時外框由 1px 變 2px，內距要同步各減 1px，元件內文字可用寬度才不變。
+   只加粗外框不減內距，文字區每邊少 1px，寬度剛好的下拉就會切字
+   （產生月表的月份下拉「10」焦點時變成「1C」，公文系統陳報頁也踩過）。 */
 QLineEdit:focus {
     border: 2px solid #8fa8c8;
+    padding: 5px 9px;
 }
 QLineEdit::placeholder {
     color: #aeaeb2;
@@ -143,6 +154,7 @@ QComboBox {
 }
 QComboBox:focus {
     border: 2px solid #8fa8c8;
+    padding: 5px 31px 5px 9px;
 }
 QComboBox::drop-down {
     subcontrol-origin: border;
@@ -194,6 +206,7 @@ QDateEdit {
 }
 QDateEdit:focus {
     border: 2px solid #8fa8c8;
+    padding: 5px 31px 5px 9px;
 }
 QDateEdit::drop-down {
     subcontrol-origin: border;

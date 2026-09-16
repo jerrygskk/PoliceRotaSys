@@ -335,5 +335,47 @@ class TestBuildSheetFor(_PlanTestCase):
         )
 
 
+class TestPairingPrefill(_PlanTestCase):
+    """配對彈窗的「接續上月填入」（只算建議，不寫資料庫）。"""
+
+    def test_previous_month_is_required(self):
+        with self.assertRaisesRegex(plan.PlanError, "沒有月表可以接續"):
+            plan.prefill_from_previous(self.conn, 2026, 10, self.tpl)
+
+    def test_prefill_matches_what_chaining_would_produce(self):
+        """沒改模板時，接續上月填入＝直接按「接續上月」的站位。"""
+        self.make_plan(2026, 10)
+        seeds, skipped = plan.prefill_from_previous(self.conn, 2026, 11, self.tpl)
+        self.assertEqual(skipped, [])
+        plan.create_plan(self.conn, 2026, 11, self.tpl, seeds)
+        custom = plan.load_snapshot(self.conn, 2026, 11)
+        plan.delete_plan(self.conn, 2026, 11)
+        plan.create_chained_plan(self.conn, 2026, 11)
+        chained = plan.load_snapshot(self.conn, 2026, 11)
+        for a, b in zip(custom["groups"], chained["groups"]):
+            self.assertEqual(
+                sorted((m["name"], m["slot_seq"]) for m in a["members"]),
+                sorted((m["name"], m["slot_seq"]) for m in b["members"]),
+            )
+
+    def test_group_with_moved_rest_is_skipped(self):
+        """⚠️ 格數一樣但休移了位，站位不能沿用——整組留空並回報名稱。"""
+        self.make_plan(2026, 10)
+        template.toggle_rest(self.conn, self.gid["大輪番"], 1)
+        seeds, skipped = plan.prefill_from_previous(self.conn, 2026, 11, self.tpl)
+        self.assertEqual(skipped, ["大輪番"])
+        self.assertNotIn(self.gid["大輪番"], seeds)
+        self.assertEqual(len(seeds[self.gid["固定番"]]), 8)
+
+    def test_retired_member_leaves_the_slot_empty(self):
+        self.make_plan(2026, 10)
+        self.conn.execute(
+            "UPDATE Member SET active = 0 WHERE member_id = ?", (self.members[0],))
+        self.conn.commit()
+        seeds, _ = plan.prefill_from_previous(self.conn, 2026, 11, self.tpl)
+        self.assertEqual(len(seeds[self.gid["大輪番"]]), 19)
+        self.assertNotIn(self.members[0], seeds[self.gid["大輪番"]])
+
+
 if __name__ == "__main__":
     unittest.main()
