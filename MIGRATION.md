@@ -48,7 +48,7 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 - **LAY-4b／4c／7／8／15** 欄寬與離線量測失準
 - **QTW-5／QTW-6 ＋ LAY-8** 的共同教訓：125% 縮放下的視覺問題容器量不出來，只能上機定案
 - **CFG-1** 開機讀一次就快取的設定，存檔後要有人重新套用（見 DEVELOPER §7）
-- **QTW-7／8／9／11／12** 可打字 combo ＋ completer 那一整族（本專案明令不用，見 DEVELOPER §4）
+- **QTW-7／8／9／11／12** 可打字 combo ＋ completer 那一整族（配對彈窗改用補強過的公版 `makeFilterCombo`，另加兩條規矩，見 DEVELOPER §4）
 
 ### 要改寫的兩條
 
@@ -72,8 +72,8 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 - [x] `lib/rota.py` 排班演算法
 - [x] `lib/layout_model.py` 版面模型
 - [x] `lib/db_schema.py`／`db_utils.py`／`db_seed.py` 資料層
-- [x] `lib/ruleset.py` 草稿↔啟用狀態機
-- [x] `lib/plan.py` 月計畫（建立、接續、組版）
+- [x] `lib/template.py` 輪番模板（原 `ruleset.py` 草稿↔啟用狀態機已拿掉，改模板＋月表快照）
+- [x] `lib/plan.py` 月表（建立、接續、覆蓋、快照、組版）
 - [x] `export/xlsx_writer.py`／`pdf_writer.py` 兩個 renderer
 - [x] `PITFALLS.md` 起頭
 
@@ -92,7 +92,8 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 **已移植（ui_utils 公版）**
 
 - [x] `ui_utils/ui_common.py`／`table.py`／`widgets.py`／`date_guard.py`（照抄；
-      移除收件人輸入元件、`reportError`（依賴公文的錯誤轉譯）、公文欄位的固定欄寬表）
+      移除收件人輸入元件、公文欄位的固定欄寬表；之後另拿掉沒人用的 `loadUi`，
+      它會把 OpenGL 整串拉進打包，見 PITFALLS PKG-2）
 - [x] `ui_utils/settings_panels.py`（只留 `_SettingsPanel`／`_save_row` 共用外框，
       各公文設定面板不搬）
 - [x] `res/resources_rc.py`（由 `pyside6-rcc res/resources.qrc -o res/resources_rc.py` 產生）
@@ -101,11 +102,12 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 - [x] `tests/test_dialog_disabled_style.py`（移除依賴公文彈窗與資料庫的案例，保留公版層檢查）、
       `tests/test_table_col_widths.py`（照抄）、`tests/test_ui_utils_smoke.py`（新增）
 
-**尚未開始——⚠️ 這些都需要 GUI，容器做不了，要在維護者的機器上進行**
+**GUI 與打包（在維護者的機器上進行）**
 
 - [x] `main.py` 最小主程式＋人員分頁（比照 PoliceDocSys 人員管理搬入）
 - [x] 輪番設定分頁（群組表與人員分頁共用 `ui_utils/sort_table.py` 排序表格公版）
-- [ ] `tabs/` 產生月表、維護兩個分頁與配對彈窗
+- [x] 產生月表分頁、配對彈窗、預覽（`tabs/tab_generate.py`、`ui_utils/pairing_dialog.py`、`ui_utils/sheet_preview.py`）
+- [ ] 維護分頁（備份資料庫、更換匯出資料夾、VACUUM）
 - [ ] `lib/print_canvas.py` 與列印三層驗收網
 - [x] `lib/version.py` ＋ `tools/bump_version.py`（產品名改為本專案、拿掉獨立版與 README 版號同步；起始 0.1.0）
 - [x] PyInstaller 打包（spec 入庫＋`tools/pyi_prune.py` 瘦身，DEVELOPER §10）
