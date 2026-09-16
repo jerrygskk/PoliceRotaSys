@@ -85,17 +85,8 @@ def reportError(title, exc, parent=None):
     msgWarning(title, friendlyErrorMessage(exc), parent)
 
 
-def confirmBox(title, text, confirm_text="確認", cancel_text="取消",
-               confirm_danger=False, default_confirm=True, parent=None,
-               informative="", min_width=0):
-    """
-    Apple HIG 風格確認對話框。版面統一為「左確認、右取消」。
-    confirm_danger=True：確認按鈕顯示紅色（破壞性操作）
-    default_confirm=False：預設選取「取消」
-    informative：次要說明（顯示為較小的灰字，置於主訊息下方，HIG 兩層式）
-    min_width：對話框最小內容寬度(px)；用於長檔名等需要更寬不換行的場合（有上限）
-    回傳 True 表示使用者點確認
-    """
+def _questionBox(title, text, informative, min_width, parent):
+    """確認類對話框的共用外框：HIG 兩層式文字＋最小寬度。"""
     msg = QMessageBox(parent)
     msg.setWindowTitle(title)
     if informative:
@@ -120,6 +111,21 @@ def confirmBox(title, text, confirm_text="確認", cancel_text="取消",
             lay.addItem(
                 QSpacerItem(min_width, 0, QSizePolicy.Minimum, QSizePolicy.Expanding),
                 lay.rowCount(), 0, 1, lay.columnCount())
+    return msg
+
+
+def confirmBox(title, text, confirm_text="確認", cancel_text="取消",
+               confirm_danger=False, default_confirm=True, parent=None,
+               informative="", min_width=0):
+    """
+    Apple HIG 風格確認對話框。版面統一為「左確認、右取消」。
+    confirm_danger=True：確認按鈕顯示紅色（破壞性操作）
+    default_confirm=False：預設選取「取消」
+    informative：次要說明（顯示為較小的灰字，置於主訊息下方，HIG 兩層式）
+    min_width：對話框最小內容寬度(px)；用於長檔名等需要更寬不換行的場合（有上限）
+    回傳 True 表示使用者點確認
+    """
+    msg = _questionBox(title, text, informative, min_width, parent)
 
     # 兩顆都用 ActionRole，避免 Qt 依平台慣例重排左右；
     # 如此按加入順序排列 → 左：確認、右：取消。
@@ -134,3 +140,23 @@ def confirmBox(title, text, confirm_text="確認", cancel_text="取消",
     msg.setEscapeButton(btn_cancel)
     msg.exec()
     return msg.clickedButton() == btn_ok
+
+
+def choiceBox(title, text, choices, cancel_text="取消", parent=None,
+              informative="", min_width=0):
+    """多選一確認框：choices 由左而右排，最後一顆是取消。
+
+    第一個選項是藍色主要動作（Enter 預設），其餘灰色；Esc 對應取消。
+    回傳所選 choices 的索引，按取消或關閉視窗回傳 None。
+    """
+    msg = _questionBox(title, text, informative, min_width, parent)
+    buttons = [msg.addButton(label, QMessageBox.ActionRole) for label in choices]
+    btn_cancel = msg.addButton(cancel_text, QMessageBox.ActionRole)
+    for index, btn in enumerate(buttons):
+        btn.setStyleSheet(BTN_CONFIRM if index == 0 else BTN_CANCEL)
+    btn_cancel.setStyleSheet(BTN_CANCEL)
+    msg.setDefaultButton(buttons[0])
+    msg.setEscapeButton(btn_cancel)
+    msg.exec()
+    clicked = msg.clickedButton()
+    return buttons.index(clicked) if clicked in buttons else None

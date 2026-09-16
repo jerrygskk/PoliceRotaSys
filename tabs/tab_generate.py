@@ -13,8 +13,9 @@
   自訂起始覆蓋時，配對彈窗帶入這個月現有的配對，只改要改的格。
   「刪除月表」一樣先確認。
 
-匯出：xlsx 與 pdf 一次產出到 App_Settings 的 output_dir，檔名「115年10月輪番表」。
-  第一次（或資料夾已不存在）才跳資料夾選擇並記住；同名檔已存在先問覆蓋。
+匯出：xlsx 與 pdf 一次產出，檔名「115年10月輪番表」。預設存到桌面，確認框可選
+  「另存到其他位置」；另存的資料夾只用這一次、不記住（維護者 2026-09-17）。
+  同名檔已存在先問覆蓋。
 
 ⚠️ 年月用兩個下拉而不是日期欄：焦點停在日期欄時滾輪會靜默改掉日期（CLAUDE.md §B）。
 下拉也一樣會吃滾輪，所以掛 installComboWheelGuard。
@@ -22,15 +23,16 @@
 import os
 from datetime import date
 
+from PySide6.QtCore import QStandardPaths
 from PySide6.QtWidgets import (
     QComboBox, QFileDialog, QLabel, QPushButton, QVBoxLayout, QWidget,
 )
 
 from export import pdf_writer, xlsx_writer
 from lib import plan
-from lib.db_utils import KEY_OUTPUT_DIR, KEY_UNIT_NAME, get_setting, opened, set_setting
+from lib.db_utils import KEY_UNIT_NAME, get_setting, opened
 from ui_utils import (
-    confirmBox, installComboWheelGuard, msgInfo, msgWarning, reportError, runWithBusy,
+    choiceBox, confirmBox, installComboWheelGuard, msgInfo, msgWarning, reportError, runWithBusy,
     styleButton,
 )
 from ui_utils.card import Card, cardHint
@@ -60,6 +62,12 @@ def exportFileNames(year, month):
     """匯出檔名（不含資料夾）：115年10月輪番表.xlsx／.pdf。"""
     stem = f"{rocYear(year)}年{month}月輪番表"
     return f"{stem}.xlsx", f"{stem}.pdf"
+
+
+def desktopFolder():
+    """使用者桌面（OneDrive 接管桌面時 Qt 也回實際位置）；找不到回空字串。"""
+    folder = QStandardPaths.writableLocation(QStandardPaths.DesktopLocation)
+    return folder if folder and os.path.isdir(folder) else ""
 
 
 def defaultYearMonth(today=None):
@@ -253,17 +261,19 @@ class TabGenerate(QWidget):
 
     # ── 匯出 ────────────────────────────────────────────────────
     def _exportFolder(self):
-        """匯出資料夾：記住的那個還在就直接用；第一次或已不存在才讓使用者選。"""
-        with opened(self.db_path) as conn:
-            folder = get_setting(conn, KEY_OUTPUT_DIR)
-        if folder and os.path.isdir(folder):
-            return folder
-        folder = QFileDialog.getExistingDirectory(self, "選擇匯出資料夾")
-        if not folder:
-            return None
-        with opened(self.db_path) as conn:
-            set_setting(conn, KEY_OUTPUT_DIR, folder)
-        return folder
+        """先問要存桌面還是另存；另存選的資料夾只用這一次。取消回 None。"""
+        desktop = desktopFolder()
+        if desktop:
+            choice = choiceBox(
+                "匯出月表", "將匯出到桌面：", ("匯出", "另存到其他位置…"),
+                informative=unbreakablePath(os.path.normpath(desktop)),
+                min_width=CONFIRM_MIN_W, parent=self)
+            if choice is None:
+                return None
+            if choice == 0:
+                return desktop
+        folder = QFileDialog.getExistingDirectory(self, "選擇匯出資料夾", desktop)
+        return folder or None
 
     def _export(self):
         year, month = self.yearMonth()

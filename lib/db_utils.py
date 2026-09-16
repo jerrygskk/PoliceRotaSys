@@ -7,7 +7,8 @@ from contextlib import contextmanager
 # App_Settings 的 key（DEVELOPER.md §7）。
 # ⚠️ 新增 key 時 DEVELOPER §7 的表要同步補一列。
 KEY_UNIT_NAME = "unit_name"
-KEY_OUTPUT_DIR = "output_dir"
+# 異地備份位置：留空＝不啟用（lib/db_backup.py）
+KEY_BACKUP_SECOND_DIR = "backup_second_dir"
 KEY_TITLE_FORMAT = "sheet_title_format"
 KEY_SCHEMA_VERSION = "schema_version"
 # 輪番設定分頁：槽位方塊第二行「N番」從 1 起算（"1"）或照番號（"0"）。只影響畫面。

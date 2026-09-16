@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QApplication
 
 import main
 from lib import plan
-from lib.db_utils import KEY_OUTPUT_DIR, get_setting, opened, set_setting
+from lib.db_utils import opened
 from tabs import tab_generate
 from tabs.tab_generate import TabGenerate, defaultYearMonth
 from ui_utils import pairing_dialog
@@ -177,36 +177,57 @@ class TestTabGenerate(_TempDb):
         self.assertEqual(tab_generate.exportFileNames(2026, 10),
                          ("115年10月輪番表.xlsx", "115年10月輪番表.pdf"))
 
-    def test_export_writes_both_files_to_the_remembered_folder(self):
+    def _to_desktop(self, folder, choice=0):
+        """匯出目的地：假桌面＝folder，確認框選 choice（0 匯出／1 另存／None 取消）。"""
+        stack = mock.patch.multiple(tab_generate, desktopFolder=mock.DEFAULT,
+                                    choiceBox=mock.DEFAULT)
+        patched = stack.start()
+        self.addCleanup(stack.stop)
+        patched["desktopFolder"].return_value = folder
+        patched["choiceBox"].return_value = choice
+        return patched
+
+    def test_export_writes_both_files_to_the_desktop_by_default(self):
         self._make_october()
         folder = tempfile.mkdtemp()
-        with opened(self.db) as conn:
-            set_setting(conn, KEY_OUTPUT_DIR, folder)
-        with mock.patch.object(tab_generate, "msgInfo"), \
-             mock.patch.object(tab_generate, "QFileDialog") as picker:
+        self._to_desktop(folder)
+        with mock.patch.object(tab_generate, "msgInfo"),              mock.patch.object(tab_generate, "QFileDialog") as picker:
             self.tab._export()
         picker.getExistingDirectory.assert_not_called()
         self.assertEqual(sorted(os.listdir(folder)),
                          ["115年10月輪番表.pdf", "115年10月輪番表.xlsx"])
 
-    def test_export_asks_for_a_folder_the_first_time_and_remembers_it(self):
+    def test_export_save_as_uses_the_picked_folder_only_once(self):
+        self._make_october()
+        desktop, other = tempfile.mkdtemp(), tempfile.mkdtemp()
+        patched = self._to_desktop(desktop, choice=1)
+        with mock.patch.object(tab_generate, "msgInfo"),              mock.patch.object(tab_generate.QFileDialog, "getExistingDirectory",
+                               return_value=other):
+            self.tab._export()
+        self.assertEqual(len(os.listdir(other)), 2)
+        self.assertEqual(os.listdir(desktop), [])
+        # 下一次仍預設桌面：沒有記住另存的資料夾
+        patched["choiceBox"].return_value = 0
+        with mock.patch.object(tab_generate, "msgInfo"),              mock.patch.object(tab_generate, "confirmBox", return_value=True):
+            self.tab._export()
+        self.assertEqual(len(os.listdir(desktop)), 2)
+
+    def test_export_cancel_writes_nothing(self):
         self._make_october()
         folder = tempfile.mkdtemp()
-        with mock.patch.object(tab_generate, "msgInfo"), \
-             mock.patch.object(tab_generate.QFileDialog, "getExistingDirectory",
-                               return_value=folder):
+        self._to_desktop(folder, choice=None)
+        with mock.patch.object(tab_generate, "msgInfo") as done,              mock.patch.object(tab_generate, "QFileDialog") as picker:
             self.tab._export()
-        with opened(self.db) as conn:
-            self.assertEqual(get_setting(conn, KEY_OUTPUT_DIR), folder)
+        picker.getExistingDirectory.assert_not_called()
+        done.assert_not_called()
+        self.assertEqual(os.listdir(folder), [])
 
     def test_export_asks_before_overwriting_existing_files(self):
         self._make_october()
         folder = tempfile.mkdtemp()
-        with opened(self.db) as conn:
-            set_setting(conn, KEY_OUTPUT_DIR, folder)
+        self._to_desktop(folder)
         open(os.path.join(folder, "115年10月輪番表.xlsx"), "w").close()
-        with mock.patch.object(tab_generate, "confirmBox", return_value=False) as ask, \
-             mock.patch.object(tab_generate, "msgInfo") as done:
+        with mock.patch.object(tab_generate, "confirmBox", return_value=False) as ask,              mock.patch.object(tab_generate, "msgInfo") as done:
             self.tab._export()
         ask.assert_called_once()
         done.assert_not_called()
@@ -215,12 +236,9 @@ class TestTabGenerate(_TempDb):
     def test_export_locked_file_gives_a_plain_message(self):
         """Excel 開著同名檔時 Windows 不讓覆寫：給看得懂的提示，不丟英文原文。"""
         self._make_october()
-        folder = tempfile.mkdtemp()
-        with opened(self.db) as conn:
-            set_setting(conn, KEY_OUTPUT_DIR, folder)
+        self._to_desktop(tempfile.mkdtemp())
         with mock.patch.object(tab_generate.xlsx_writer, "write_sheet",
-                               side_effect=PermissionError("locked")), \
-             mock.patch.object(tab_generate, "msgWarning") as warn:
+                               side_effect=PermissionError("locked")),              mock.patch.object(tab_generate, "msgWarning") as warn:
             self.tab._export()
         self.assertIn("Excel", warn.call_args[0][1])
 

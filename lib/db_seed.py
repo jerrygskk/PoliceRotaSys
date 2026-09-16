@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
-from lib.db_utils import KEY_OUTPUT_DIR, KEY_TITLE_FORMAT, KEY_UNIT_NAME
+from lib.db_utils import KEY_TITLE_FORMAT, KEY_UNIT_NAME
 from lib.layout_model import DEFAULT_TITLE_FORMAT
 from lib.rota import MODE_BLANK, blank_labels, expand_range
 
@@ -72,7 +72,6 @@ SEED_CODE_ABOVE = frozenset({"幹部"})
 
 DEFAULT_SETTINGS = {
     KEY_UNIT_NAME: "○○分局○○派出所",
-    KEY_OUTPUT_DIR: "",
     KEY_TITLE_FORMAT: DEFAULT_TITLE_FORMAT,
 }
 
