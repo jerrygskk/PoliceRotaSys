@@ -52,7 +52,8 @@ class Column:
 
     kind: str
     header: str = ""          # 姓名，或「日期」「星期」
-    code: str = ""            # 固定番／幹部的代碼，印在姓名下
+    code: str = ""            # 固定番／幹部的代碼，與姓名合併在同一格、橫排
+    code_above: bool = False  # 代碼放名字上方（幹部）；否則放下方
     header_color: str = BLACK
     weight: float = 1.0       # 相對欄寬，來自所屬群組的設定
     cells: tuple[Cell, ...] = ()
@@ -71,6 +72,22 @@ class Column:
 WEIGHT_TITLE = 1.0
 WEIGHT_HEADER = 1.0      # 日期／星期
 WEIGHT_DEFAULT = 1.0     # 群組沒指定時
+
+
+def header_spans_code_row(column: "Column") -> bool:
+    """這一欄的標題是否跨姓名列與代碼列（兩格合併成一格）。
+
+    合併：日期欄、星期欄、所有人名欄、沒有小標題的空白欄（同仁專案臨檢、快打勤務）。
+    固定番／幹部的人名欄也合併，代碼與姓名放在同一格、**橫排**，位置由群組設定決定
+    （名字下方或上方；維護者 2026-09-16）。不合併的只剩劃假那種「有小標題的空白欄」
+    （早中晚印在代碼列）。
+
+    ⚠️ Excel 與 PDF **共用這一條**，不要在 renderer 裡各寫一份（LAY-11）。
+    標題欄（最左直書）另外整欄合併，不歸這裡管。
+    """
+    if column.kind in (COL_MEMBER, COL_DATE, COL_WEEKDAY):
+        return True
+    return column.kind == COL_BLANK and not column.code
 
 
 def column_weight(column: "Column") -> float:
@@ -135,6 +152,8 @@ class Entry:
     slots: tuple[Slot, ...] | None = None
     # 女警：姓名印紅色（維護者要求，xlsx 與 pdf 一致）。
     female: bool = False
+    # 代碼放名字上方（群組設定 code_position = above）。
+    code_above: bool = False
 
 
 @dataclass(frozen=True)
@@ -165,6 +184,28 @@ def sheet_title(
     return fmt.format(unit=unit_name, roc=roc_year(year), month=month, year=year)
 
 
+def vertical_pieces(text: str) -> tuple[str, ...]:
+    """直書時每一行放什麼：中文一字一行，連續的半形數字／英文併成一行橫排。
+
+    維護者 2026-09-17：標題「115 年 9 月」直書時數字要橫排，不拆成 1／1／5。
+    空白直書只會多出一段空行，一律略過。xlsx 與 pdf 共用這條規則。
+    """
+    pieces: list[str] = []
+    run = ""
+    for char in text:
+        if char.isascii() and char.isalnum():
+            run += char
+            continue
+        if run:
+            pieces.append(run)
+            run = ""
+        if not char.isspace():
+            pieces.append(char)
+    if run:
+        pieces.append(run)
+    return tuple(pieces)
+
+
 def is_weekend(year: int, month: int, day: int) -> bool:
     return calendar.weekday(year, month, day) in (SATURDAY, SUNDAY)
 
@@ -173,10 +214,17 @@ def _day_color(year: int, month: int, day: int) -> str:
     return RED if is_weekend(year, month, day) else BLACK
 
 
+# 日期、星期兩字直書中間空兩個全形空白，比較不擠；但整格空白太開，空白只佔
+# 一般字高的 GAP_SCALE（維護者 2026-09-17）。xlsx 以較小字級的空白、pdf 以較矮的行實現。
+GAP_CHAR = "　"
+HEADER_GAP = GAP_CHAR * 2
+GAP_SCALE = 0.5
+
+
 def date_column(year: int, month: int, day_count: int) -> Column:
     return Column(
         kind=COL_DATE,
-        header="日期",
+        header=f"日{HEADER_GAP}期",
         cells=tuple(
             Cell(str(day), _day_color(year, month, day))
             for day in range(1, day_count + 1)
@@ -187,7 +235,7 @@ def date_column(year: int, month: int, day_count: int) -> Column:
 def weekday_column(year: int, month: int, day_count: int) -> Column:
     return Column(
         kind=COL_WEEKDAY,
-        header="星期",
+        header=f"星{HEADER_GAP}期",
         cells=tuple(
             Cell(
                 WEEKDAY_LABELS[calendar.weekday(year, month, day)],
@@ -240,7 +288,7 @@ def _member_column(
             for slot in entry.slots
         )
     return Column(
-        kind=kind, header=entry.name, code=entry.code,
+        kind=kind, header=entry.name, code=entry.code, code_above=entry.code_above,
         header_color=RED if entry.female else BLACK,
         weight=weight, cells=cells,
     )

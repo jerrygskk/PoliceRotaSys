@@ -87,6 +87,23 @@ class TestGroups(_EditTestCase):
         copy = template.copy_template(self.conn, self.empty, "複本")
         self.assertEqual(template.group_rows(self.conn, copy)[0]["reverse_order"], 1)
 
+    def test_code_position_is_saved_and_copied(self):
+        gid = template.add_group(self.conn, self.empty, "幹部", MODE_FIXED, "A-F",
+                                 code_position=template.CODE_ABOVE)
+        self.assertEqual(template.group_rows(self.conn, self.empty)[0]["code_position"], "above")
+        template.update_group(self.conn, gid, "幹部", MODE_FIXED, "A-F", True, "",
+                              code_position=template.CODE_BELOW)
+        self.assertEqual(template.group_rows(self.conn, self.empty)[0]["code_position"], "below")
+        template.update_group(self.conn, gid, "幹部", MODE_FIXED, "A-F", True, "",
+                              code_position=template.CODE_ABOVE)
+        copy = template.copy_template(self.conn, self.empty, "複本")
+        self.assertEqual(template.group_rows(self.conn, copy)[0]["code_position"], "above")
+
+    def test_unknown_code_position_is_refused(self):
+        with self.assertRaises(template.TemplateError):
+            template.add_group(self.conn, self.empty, "幹部", MODE_FIXED, "A-F",
+                               code_position="left")
+
     def test_bad_range_is_refused(self):
         with self.assertRaises(RangeError):
             template.add_group(self.conn, self.empty, "甲組", MODE_ROTATE, "20-1")

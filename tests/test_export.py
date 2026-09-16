@@ -14,7 +14,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from export import xlsx_writer
-from lib.layout_model import COL_TITLE, Entry, Section, build_sheet
+from lib.layout_model import COL_MEMBER, COL_TITLE, Entry, Section, build_sheet
 from lib.rota import make_group, rota_month
 
 try:
@@ -106,9 +106,11 @@ class TestXlsx(_TempDirCase):
 
     def test_title_is_the_leftmost_vertical_column(self):
         """⚠️ 標題在最左邊一整欄直書，不是橫置於頁首。"""
+        from lib.layout_model import vertical_pieces
         cell = self.ws.cell(row=xlsx_writer.ROW_NAME, column=1)
-        self.assertEqual(cell.value, self.sheet.title)
-        self.assertEqual(cell.alignment.textRotation, 255)
+        # 換行疊字（不用 textRotation），數字 115 橫排佔一行（維護者 2026-09-17）
+        self.assertEqual(cell.value, "\n".join(vertical_pieces(self.sheet.title)))
+        self.assertTrue(cell.alignment.wrap_text)
         self.assertEqual(self.sheet.columns[0].kind, COL_TITLE)
 
     def test_every_model_column_becomes_a_worksheet_column(self):
@@ -125,9 +127,14 @@ class TestXlsx(_TempDirCase):
         for index, column in enumerate(self.sheet.columns, start=1):
             if column.kind == COL_TITLE:
                 continue
+            expected = column.header
+            if column.kind == COL_MEMBER and column.code:
+                name = "\n".join(column.header)
+                expected = (f"{column.code}\n{name}" if column.code_above
+                            else f"{name}\n{column.code}")
             self.assertEqual(
                 self.ws.cell(row=xlsx_writer.ROW_NAME, column=index).value,
-                column.header,
+                expected,
             )
             for day, cell in enumerate(column.cells):
                 got = self.ws.cell(
@@ -186,12 +193,12 @@ class TestXlsx(_TempDirCase):
         cell = self.ws.cell(row=xlsx_writer.ROW_FIRST_DAY, column=index)
         self.assertIsNotNone(cell.border.left.style)
 
-    def test_fixed_group_code_is_written(self):
+    def test_fixed_group_code_is_written_with_the_name(self):
+        """固定番代號與姓名同一格、橫排在名字下方（維護者 2026-09-16）。"""
         column = block_named(self.sheet, "固定番").columns[0]
         index = column_index(self.sheet, column)
-        self.assertEqual(
-            self.ws.cell(row=xlsx_writer.ROW_CODE, column=index).value, "21"
-        )
+        value = self.ws.cell(row=xlsx_writer.ROW_NAME, column=index).value
+        self.assertTrue(value.endswith("\n21"))
 
     def test_a_female_officer_name_is_red_and_her_code_is_not(self):
         """⚠️ 女警只有姓名印紅色，番號一律黑的。"""
@@ -206,18 +213,59 @@ class TestXlsx(_TempDirCase):
         )
         path = str(self.dir / "female.xlsx")
         xlsx_writer.write_sheet(sheet, path)
-        ws = load_workbook(path).active
+        ws = load_workbook(path, rich_text=True).active
         cols = {c.header: i for i, c in enumerate(sheet.columns, start=1)}
-        male = ws.cell(row=xlsx_writer.ROW_NAME, column=cols["王小明"])
-        female = ws.cell(row=xlsx_writer.ROW_NAME, column=cols["李小華"])
-        self.assertEqual(male.font.color.rgb, "FF000000")
-        self.assertEqual(female.font.color.rgb, "FFCC0000")
-        code = ws.cell(row=xlsx_writer.ROW_CODE, column=cols["李小華"])
-        self.assertEqual(code.value, "22")
-        # 沒有明設顏色時 openpyxl 的 color 是 None，那就是預設黑。
-        self.assertTrue(
-            code.font.color is None or code.font.color.rgb != "FFCC0000"
+        male = ws.cell(row=xlsx_writer.ROW_NAME, column=cols["王小明"]).value
+        female = ws.cell(row=xlsx_writer.ROW_NAME, column=cols["李小華"]).value
+        # 姓名與代號是同一格的兩段 RichText：姓名一段、代號一段
+        self.assertEqual(male[0].font.color.rgb, "FF000000")
+        self.assertEqual(female[0].font.color.rgb, "FFCC0000")
+        self.assertEqual(female[1].text, "22")
+        self.assertEqual(female[1].font.color.rgb, "FF000000")
+
+    def _merged(self, column):
+        index = column_index(self.sheet, column)
+        from openpyxl.utils import get_column_letter
+        letter = get_column_letter(index)
+        return f"{letter}{xlsx_writer.ROW_NAME}:{letter}{xlsx_writer.ROW_CODE}" in {
+            str(r) for r in self.ws.merged_cells.ranges
+        }
+
+    def test_rotate_names_and_date_headers_span_the_code_row(self):
+        """輪番人名、日期、星期下面沒東西，與代碼列合併（維護者 2026-09-16）。"""
+        rotate = block_named(self.sheet, "大輪番")
+        date_block = self.sheet.blocks[1]
+        self.assertTrue(self._merged(rotate.columns[0]))
+        self.assertTrue(all(self._merged(c) for c in date_block.columns))
+
+    def test_fixed_names_span_the_code_row_too(self):
+        """固定番也合併，代號寫進姓名格（維護者 2026-09-16）。"""
+        self.assertTrue(self._merged(block_named(self.sheet, "固定番").columns[0]))
+
+    def test_code_above_puts_the_code_first(self):
+        """幹部：代號在名字上方。"""
+        from lib.layout_model import Entry, Section, build_sheet
+
+        sheet = build_sheet(
+            UNIT, 2026, 10,
+            [Section("幹部", (Entry("王小明", code="A", code_above=True),),
+                     header_before=False)],
         )
+        path = str(self.dir / "above.xlsx")
+        xlsx_writer.write_sheet(sheet, path)
+        ws = load_workbook(path).active
+        index = next(i for i, c in enumerate(sheet.columns, start=1) if c.header == "王小明")
+        self.assertEqual(ws.cell(row=xlsx_writer.ROW_NAME, column=index).value, "A\n王\n小\n明")
+
+    def test_excel_can_open_the_rich_text_cells(self):
+        """⚠️ 只含換行的 RichText 段會被存成空字串，Excel 判定檔案毀損（實測踩過）。"""
+        from openpyxl.cell.rich_text import CellRichText
+
+        for row in load_workbook(self.path, rich_text=True).active.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, CellRichText):
+                    for block in cell.value:
+                        self.assertTrue(str(block).replace(chr(10), ""), cell.coordinate)
 
     def test_member_names_are_written_vertically(self):
         """紙本上姓名是直書。"""
@@ -405,6 +453,44 @@ class TestAdaptiveWidth(unittest.TestCase):
             self.assertAlmostEqual(total, xlsx_writer.PRINTABLE_H_PT, delta=1)
 
 
+class TestHeaderMergeRule(unittest.TestCase):
+    """Excel 與 PDF 共用的「標題是否跨代碼列」規則（layout_model.header_spans_code_row）。"""
+
+    def test_rule(self):
+        from lib.layout_model import (
+            COL_BLANK, COL_DATE, COL_MEMBER, COL_WEEKDAY, Column, header_spans_code_row,
+        )
+        self.assertTrue(header_spans_code_row(Column(COL_MEMBER, "王小明")))
+        self.assertTrue(header_spans_code_row(Column(COL_DATE, "日期")))
+        self.assertTrue(header_spans_code_row(Column(COL_WEEKDAY, "星期")))
+        self.assertTrue(header_spans_code_row(Column(COL_BLANK, "快打勤務")))
+        self.assertTrue(header_spans_code_row(Column(COL_MEMBER, "徐立偉", code="21")))
+        self.assertFalse(header_spans_code_row(Column(COL_BLANK, "", code="早")))
+
+
+class TestXlsxFontSizes(_TempDirCase):
+    """Excel 字級依格子大小放大（維護者 2026-09-16：老人家眼睛不好，佔滿 80～90%）。"""
+
+    def test_day_cells_are_larger_than_the_old_12pt(self):
+        plan = xlsx_writer.font_plan(sample_sheet())
+        self.assertGreater(plan.body, 12)
+        self.assertGreater(plan.name, 12)
+
+    def test_cells_shrink_to_fit_so_nothing_is_clipped(self):
+        """估算不準時由 Excel 的「縮小字型以適合欄寬」兜底。"""
+        path = str(self.dir / "font.xlsx")
+        sheet = sample_sheet()
+        xlsx_writer.write_sheet(sheet, path)
+        ws = load_workbook(path).active
+        column = block_named(sheet, "大輪番").columns[0]
+        index = column_index(sheet, column)
+        day = ws.cell(row=xlsx_writer.ROW_FIRST_DAY, column=index)
+        name = ws.cell(row=xlsx_writer.ROW_NAME, column=index)
+        self.assertTrue(day.alignment.shrink_to_fit)
+        self.assertTrue(name.alignment.shrink_to_fit)
+        self.assertEqual(day.font.sz, xlsx_writer.font_plan(sheet).body)
+
+
 class TestNameRowHeight(unittest.TestCase):
     """⚠️ Excel 放不下就是切掉，而且不會有任何警告。
 
@@ -413,25 +499,38 @@ class TestNameRowHeight(unittest.TestCase):
     依實際內容算」。
     """
 
-    def sheet_with_header(self, header: str):
+    def member_sheet(self, *names, code=""):
         return build_sheet(
             UNIT, 2026, 10,
-            [Section(header, (Entry(header),), header_before=False)],
-            blank_sections=frozenset({header}),
+            [Section("固定番" if code else "大輪番",
+                     tuple(Entry(n, code=code) for n in names), header_before=False)],
         )
 
-    def test_a_longer_vertical_header_needs_a_taller_row(self):
-        short = xlsx_writer.name_row_height(self.sheet_with_header("快打"))
-        long = xlsx_writer.name_row_height(self.sheet_with_header("同仁專案臨檢"))
+    def test_a_longer_name_needs_a_taller_row(self):
+        short = xlsx_writer.name_row_height(self.member_sheet("王明"))
+        long = xlsx_writer.name_row_height(self.member_sheet("歐陽美依"))
         self.assertGreater(long, short)
 
-    def test_six_character_header_fits_in_name_plus_code_rows(self):
-        sheet = self.sheet_with_header("同仁專案臨檢")
-        available = (
-            xlsx_writer.name_row_height(sheet) + xlsx_writer.CODE_ROW_HEIGHT
-        )
-        needed = 6 * xlsx_writer.FONT_SIZE * xlsx_writer.VERTICAL_LINE_RATIO
-        self.assertGreaterEqual(available, needed)
+    def test_a_name_that_keeps_its_code_row_is_not_squeezed(self):
+        """⚠️ 逐欄算：沒合併的欄（固定番）不能少算代碼列那一截。"""
+        sheet = self.member_sheet("歐陽美依", code="21")
+        plan = xlsx_writer.font_plan(sheet)
+        needed = 4 * plan.name * xlsx_writer.VERTICAL_LINE_RATIO
+        self.assertGreaterEqual(plan.name_row, needed)
+
+    def test_very_long_names_shrink_instead_of_stretching_the_row(self):
+        """比 NAME_ROW_CHARS 長的名字只縮自己那格，不把整列撐高壓扁每天的格子。"""
+        normal = xlsx_writer.name_row_height(self.member_sheet("歐陽美依"))
+        with_long = xlsx_writer.name_row_height(self.member_sheet("歐陽美依", "歐陽阿美依娃"))
+        self.assertEqual(normal, with_long)
+
+    def test_long_blank_header_font_fits_its_cell(self):
+        """同仁專案臨檢六個字直書：字級縮到放得下（姓名列＋代碼列）。"""
+        from lib.layout_model import COL_BLANK, Column
+        column = Column(COL_BLANK, "同仁專案臨檢")
+        height = xlsx_writer.MIN_NAME_ROW_HEIGHT + xlsx_writer.CODE_ROW_HEIGHT
+        size = xlsx_writer._vertical_size(column, 40, height, xlsx_writer.MAX_FONT_SIZE)
+        self.assertLessEqual(6 * size * xlsx_writer.VERTICAL_LINE_RATIO, height + 0.5)
 
     def test_a_four_line_note_fits(self):
         note = tuple(f"第 {i} 行" for i in range(4))
@@ -445,7 +544,7 @@ class TestNameRowHeight(unittest.TestCase):
         self.assertGreaterEqual(xlsx_writer.name_row_height(sheet), needed)
 
     def test_the_page_height_is_still_filled_after_growing_the_name_row(self):
-        sheet = self.sheet_with_header("同仁專案臨檢")
+        sheet = self.member_sheet("歐陽美依")
         name_h = xlsx_writer.name_row_height(sheet)
         total = (
             name_h
@@ -523,3 +622,16 @@ class TestBothRenderersAgree(_TempDirCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestVerticalPieces(unittest.TestCase):
+    """直書時數字、英文併成一行橫排（xlsx 與 pdf 共用）。"""
+
+    def test_digits_stay_together_and_spaces_drop(self):
+        from lib.layout_model import vertical_pieces
+        self.assertEqual(vertical_pieces("某所 115 年 9 月"),
+                         ("某", "所", "115", "年", "9", "月"))
+
+    def test_date_header_has_a_gap(self):
+        from lib.layout_model import GAP_CHAR, date_column
+        self.assertEqual(date_column(2026, 10, 31).header, f"日{GAP_CHAR * 2}期")

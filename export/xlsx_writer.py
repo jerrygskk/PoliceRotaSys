@@ -9,11 +9,16 @@
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+from itertools import groupby
+
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.worksheet.page import PageMargins
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
 
 from lib.layout_model import (
     BLUE,
@@ -24,11 +29,36 @@ from lib.layout_model import (
     Block,
     Sheet,
     column_weight,
+    GAP_CHAR,
+    GAP_SCALE,
+    header_spans_code_row,
+    vertical_pieces,
 )
 
 FONT_NAME = "標楷體"
-FONT_SIZE = 12
 TITLE_FONT_SIZE = 18
+# 純半形字串（番號、日期、代碼、標題的 115）用 Tahoma，與 pdf_writer.DIGIT_FAMILY 一致（維護者選 Tahoma：好認、比 Verdana 省寬度）
+DIGIT_FONT_NAME = "Tahoma"
+
+
+def _font_name(text) -> str:
+    text = text or ""
+    return DIGIT_FONT_NAME if text.isascii() and text.strip() else FONT_NAME
+
+# ⚠️ **格子裡的字要盡量大**（維護者 2026-09-16：老人家眼睛不好，佔滿 80～90%，
+# 以不切字為主；Excel 與 PDF 可以分開設定）。舊寫法一律 12pt，不管格子多大。
+#
+# openpyxl 量不到字寬，只能依格子點數估：標楷體中文一個字佔一個字級寬、半形
+# 數字字母佔半個；橫書一行的高度約字級 × LINE_RATIO。字級取寬、高兩個限制的
+# 較小者 × XLSX_FILL。估不準的部分由 Excel 的「縮小字型以適合欄寬」兜底，
+# 所以不會切字，最壞是某幾格縮小一點。
+# 比例要調：上機看完直接改 XLSX_FILL（PDF 另有 pdf_writer.FILL_RATIO）。
+XLSX_FILL = 0.85
+LINE_RATIO = 1.0
+MAX_FONT_SIZE = 36
+# 姓名列高度以幾個字的姓名為準。比這長的名字（複姓、原住民姓名）只縮那一格，
+# 不把整列撐高——撐高會把每天的格子壓扁，整張表的字都跟著變小。
+NAME_ROW_CHARS = 4
 
 # ⚠️ 版面尺寸是**算出來的，不是猜的**——目標是自然尺寸剛好貼近 A3 橫式的
 # 可列印區，讓 fitToPage 幾乎不用縮。
@@ -79,7 +109,7 @@ MAX_COL_WIDTH = 13.0
 # 所以改成依實際內容算：取「最長的直書標題」與「註記行數」兩者所需高度的
 # 較大者。
 MIN_NAME_ROW_HEIGHT = 62
-VERTICAL_LINE_RATIO = 1.35   # 直書一個字佔的高度 ÷ 字級
+VERTICAL_LINE_RATIO = 1.35   # 直書一個字佔的高度 ÷ 字級（含字距）
 NOTE_FONT_SIZE = 9           # 註記字小一級，四行才排得下
 NOTE_LINE_RATIO = 1.45
 CODE_ROW_HEIGHT = 20
@@ -95,32 +125,100 @@ _BLACK = "FF000000"
 
 _THIN = Side(style="thin", color=_BLACK)
 _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
-_CENTER = Alignment(horizontal="center", vertical="center")
+# shrink_to_fit：估算的字級塞不下時由 Excel 自己縮，保證不切字
+_CENTER = Alignment(horizontal="center", vertical="center", shrink_to_fit=True)
 # 姓名直書（Excel 的 textRotation 255 ＝ 直排）。
-_VERTICAL = Alignment(horizontal="center", vertical="center", textRotation=255)
+_VERTICAL = Alignment(horizontal="center", vertical="center", textRotation=255,
+                      shrink_to_fit=True)
 _NOTE = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
 
-def name_row_height(sheet: Sheet) -> float:
-    """姓名列要多高才放得下最長的直書標題與最多行的註記。"""
-    longest = 0
-    for column in sheet.columns:
-        if column.kind != COL_TITLE and len(column.header) > 1:
-            longest = max(longest, len(column.header))
-    needed_header = longest * FONT_SIZE * VERTICAL_LINE_RATIO
-    # 沒有小標題的空白欄，標題跨姓名列與代碼列，所以可用高度多了一列。
-    needed_header -= CODE_ROW_HEIGHT if _has_spanning_header(sheet) else 0
+# 換行格（不能配「縮小字型」）裡的半形字：Tahoma 粗體數字比半個字寬，照 _em_width 估
+# 會被 Excel 折成「11／5」「2／7」（實測），多留四成五
+DIGIT_EM_SLACK = 1.45
 
+
+def _digit_size(text: str, size: float, width_pt: float) -> float:
+    return min(size, round(XLSX_FILL * width_pt / (_em_width(text) * DIGIT_EM_SLACK), 1))
+
+
+def _em_width(text: str) -> float:
+    """字串的寬度，以字級為單位：中文 1、半形 0.5。"""
+    return sum(0.5 if ord(ch) < 128 else 1.0 for ch in text)
+
+
+@dataclass(frozen=True)
+class FontPlan:
+    """一張表各類格子的字級（pt）與姓名列高度。Excel 版面由這裡決定。"""
+
+    body: float        # 每天的格子（番號、休、空白欄）
+    header: float      # 日期欄、星期欄的每天格子
+    code: float        # 代碼列（21、A、早中晚）
+    name: float        # 直書姓名（以人名欄寬為準）
+    name_row: float    # 姓名列高度
+
+
+def _fit(width_pt: float, height_pt: float, texts) -> float:
+    """讓 texts 裡最寬的字串橫書放進格子 XLSX_FILL 的字級。"""
+    widest = max((_em_width(t) for t in texts if t), default=1.0)
+    size = min(XLSX_FILL * width_pt / widest, XLSX_FILL * height_pt / LINE_RATIO)
+    return round(min(MAX_FONT_SIZE, max(6.0, size)), 1)
+
+
+def font_plan(sheet: Sheet) -> FontPlan:
+    pairs = list(zip(sheet.columns, (_width_to_points(w) for w in column_widths(sheet))))
+
+    def narrowest(pred):
+        widths = [pt for column, pt in pairs if pred(column)]
+        return min(widths) if widths else None
+
+    member_pt = narrowest(lambda c: c.kind == COL_MEMBER)
+    name = round(min(MAX_FONT_SIZE, XLSX_FILL * member_pt), 1) if member_pt else 12.0
+
+    needed_header = 0.0
+    for column in sheet.columns:
+        if column.kind != COL_MEMBER or len(column.header) > NAME_ROW_CHARS:
+            continue
+        lines = _header_lines(column)
+        if lines <= 1:
+            continue
+        need = lines * name * VERTICAL_LINE_RATIO
+        if header_spans_code_row(column):
+            need -= CODE_ROW_HEIGHT
+        needed_header = max(needed_header, need)
     most_lines = max((len(b.note) for b in sheet.blocks), default=0)
     needed_note = most_lines * NOTE_FONT_SIZE * NOTE_LINE_RATIO
+    name_row = max(MIN_NAME_ROW_HEIGHT, needed_header, needed_note)
 
-    return max(MIN_NAME_ROW_HEIGHT, needed_header, needed_note)
+    row_h = day_row_height(sheet.day_count, name_row)
+    data = [c for c in sheet.columns if c.kind in (COL_MEMBER, COL_BLANK)]
+    heads = [c for c in sheet.columns if c.kind not in (COL_MEMBER, COL_BLANK, COL_TITLE)]
+    coded = [c for c in sheet.columns if c.code]
+    body = _fit(narrowest(lambda c: c.kind in (COL_MEMBER, COL_BLANK)) or 30, row_h,
+                {cell.text for c in data for cell in c.cells} | {"休", "00"})
+    header = _fit(narrowest(lambda c: c in heads) or 30, row_h,
+                  {cell.text for c in heads for cell in c.cells} | {"00"})
+    code = _fit(narrowest(lambda c: bool(c.code)) or 30, CODE_ROW_HEIGHT,
+                {c.code for c in coded})
+    return FontPlan(body=body, header=header, code=code, name=name, name_row=name_row)
 
 
-def _has_spanning_header(sheet: Sheet) -> bool:
-    return any(
-        column.kind == COL_BLANK and not column.code for column in sheet.columns
-    )
+def name_row_height(sheet: Sheet) -> float:
+    """姓名列要多高才放得下直書姓名與最多行的註記（依 font_plan）。"""
+    return font_plan(sheet).name_row
+
+
+def _header_lines(column) -> int:
+    """直書標題佔幾行：姓名每字一行，固定番／幹部的代碼另佔一行。"""
+    extra = 1 if column.kind == COL_MEMBER and column.code else 0
+    return len(column.header) + extra
+
+
+def _vertical_size(column, width_pt: float, height_pt: float, preferred: float) -> float:
+    """直書標題的字級：以寬度為主，字多到上下放不下時才縮（不切字）。"""
+    by_height = height_pt / (_header_lines(column) * VERTICAL_LINE_RATIO)
+    by_width = XLSX_FILL * width_pt
+    return round(max(6.0, min(preferred, by_width, by_height)), 1)
 
 
 # Excel 欄寬單位換算。
@@ -219,9 +317,6 @@ def _argb(color: str) -> str:
     return _BLACK
 
 
-
-
-
 def _setup_page(ws: Worksheet, sheet: Sheet) -> None:
     """A3 橫式、縮成一頁。
 
@@ -279,12 +374,25 @@ def _write_note(ws: Worksheet, first: int, block: Block) -> None:
         )
 
 
-def _write_title_column(ws: Worksheet, index: int, sheet: Sheet) -> None:
+def _write_title_column(ws: Worksheet, index: int, sheet: Sheet, width_pt: float) -> None:
     """最左邊那一整欄：直書標題，從姓名列一路合併到最後一天。"""
     last = ROW_FIRST_DAY - 1 + sheet.day_count
-    cell = ws.cell(row=ROW_NAME, column=index, value=sheet.title)
-    cell.font = Font(name=FONT_NAME, size=TITLE_FONT_SIZE, bold=True)
-    cell.alignment = _VERTICAL
+    # ⚠️ 不用 textRotation 直書：那會把「115」也拆成上下三個字。改成每段一行換行
+    # 疊起來，數字那行照樣橫排（維護者 2026-09-17）。換行不能配「縮小字型」，
+    # 字級要自己保證最寬的那段（115）塞得進欄寬。
+    pieces = vertical_pieces(sheet.title)
+    widest = max((_em_width(p) for p in pieces), default=1.0)
+    size = min(TITLE_FONT_SIZE, round(XLSX_FILL * width_pt / (widest * DIGIT_EM_SLACK), 1))
+    cell = ws.cell(row=ROW_NAME, column=index)
+    if pieces:
+        # 每段換字型：數字段用 Tahoma。⚠️ 換行併在該段尾巴，單獨一段換行會讓檔案毀損
+        last = len(pieces) - 1
+        cell.value = CellRichText(*(
+            TextBlock(InlineFont(rFont=_font_name(p), sz=size, b=True),
+                      p + ("" if i == last else "\n"))
+            for i, p in enumerate(pieces)
+        ))
+    cell.alignment = _STACKED
     cell.border = _BORDER
     _border_range(ws, ROW_NAME, index, last, index)
     ws.merge_cells(
@@ -292,24 +400,80 @@ def _write_title_column(ws: Worksheet, index: int, sheet: Sheet) -> None:
     )
 
 
+def _gapped_header(column, size: float) -> CellRichText:
+    """「日　　期」：空白那段字級縮成 GAP_SCALE，間距才不會整整兩個字高。"""
+    color = _argb(column.header_color)
+    blocks = []
+    for gap, chars in groupby(column.header, key=lambda char: char == GAP_CHAR):
+        font = InlineFont(rFont=FONT_NAME, sz=round(size * GAP_SCALE, 1) if gap else size,
+                          b=True, color=color)
+        blocks.append(TextBlock(font, "".join(chars)))
+    return CellRichText(*blocks)
+
+
+# 固定番／幹部：姓名每字一行、代碼橫排一行，不用 textRotation（見 _write_name_with_code）
+_STACKED = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+
+def _write_name_with_code(cell, column, size: float, width_pt: float) -> None:
+    """姓名與代碼寫進同一格：姓名一字一行（看起來是直書），代碼橫排放上方或下方。
+
+    ⚠️ 不能用 textRotation=255：Excel 一格只能一種文字方向，直排會把「21」也拆成
+    上下兩個字。改用換行把中文字一個一個疊起來，代碼那一行照樣橫排（維護者 2026-09-16）。
+    ⚠️ 換行（wrap_text）與「縮小字型以適合欄寬」不能同時用，所以字級要先算準
+    （_vertical_size 以行數計）。姓名跟著女警變紅、代碼一律黑，用 RichText 分色。
+    """
+    from openpyxl.cell.rich_text import CellRichText, TextBlock
+    from openpyxl.cell.text import InlineFont
+
+    # ⚠️ 換行要併進前後文字：只含換行的一段存檔時被當空白吃掉，Excel 判定檔案毀損打不開
+    name_font = InlineFont(rFont=FONT_NAME, sz=size, b=True, color=_argb(column.header_color))
+    code_size = _digit_size(column.code, size, width_pt)
+    code_font = InlineFont(rFont=_font_name(column.code), sz=code_size, b=True, color=_BLACK)
+    name = "\n".join(column.header)
+    if column.code_above:
+        # 換行歸姓名那段：換行跟著代號字型的話，代號和名字之間會多空一截
+        # （維護者 2026-09-17：「貌合神離」）
+        parts = (TextBlock(code_font, column.code), TextBlock(name_font, "\n" + name))
+    else:
+        parts = (TextBlock(name_font, name + "\n"), TextBlock(code_font, column.code))
+    cell.value = CellRichText(*parts)
+    cell.alignment = _STACKED
+
+
 def _write_column(
-    ws: Worksheet, index: int, column, day_count: int, skip_name: bool = False
+    ws: Worksheet, index: int, column, day_count: int, plan: FontPlan,
+    width_pt: float, skip_name: bool = False,
 ) -> None:
     """``skip_name`` 為真時不畫姓名列——那一格被區塊註記的合併格佔走了。"""
+    cell_size = plan.body if column.kind in (COL_MEMBER, COL_BLANK) else plan.header
     if not skip_name:
-        header = ws.cell(row=ROW_NAME, column=index, value=column.header or None)
-        header.font = Font(
-            name=FONT_NAME, size=FONT_SIZE,
-            color=_argb(column.header_color), bold=True,
-        )
-        # ⚠️ 欄很窄，多字標題橫著放會被切掉（「快打勤務」「日期」都踩過）
-        # ——只要超過一個字就直書。
-        header.alignment = _VERTICAL if len(column.header) > 1 else _CENTER
+        spans = header_spans_code_row(column)
+        header_h = plan.name_row + (CODE_ROW_HEIGHT if spans else 0)
+        with_code = column.kind == COL_MEMBER and bool(column.code)
+        if len(column.header) > 1 or with_code:
+            preferred = plan.name if column.kind == COL_MEMBER else MAX_FONT_SIZE
+            size = _vertical_size(column, width_pt, header_h, preferred)
+        else:
+            size = _fit(width_pt, header_h, {column.header})
+        header = ws.cell(row=ROW_NAME, column=index)
+        if with_code:
+            _write_name_with_code(header, column, size, width_pt)
+        else:
+            header.value = column.header or None
+            header.font = Font(
+                name=FONT_NAME, size=size,
+                color=_argb(column.header_color), bold=True,
+            )
+            if GAP_CHAR in column.header and len(column.header) > 1:
+                header.value = _gapped_header(column, size)
+            # ⚠️ 欄很窄，多字標題橫著放會被切掉（「快打勤務」「日期」都踩過）
+            # ——只要超過一個字就直書。
+            header.alignment = _VERTICAL if len(column.header) > 1 else _CENTER
         header.border = _BORDER
 
-        # 沒有小標題的欄（同仁專案臨檢、快打勤務），標題跨姓名列與代碼列，
-        # 照紙本的合併方式。
-        if not column.code and column.kind in (COL_BLANK, COL_TITLE):
+        # 代碼列沒東西的欄，標題跨姓名列與代碼列合併（規則與 PDF 共用）
+        if column.kind == COL_TITLE or header_spans_code_row(column):
             _border_range(ws, ROW_NAME, index, ROW_CODE, index)
             ws.merge_cells(
                 start_row=ROW_NAME, start_column=index,
@@ -318,19 +482,19 @@ def _write_column(
         else:
             # ⚠️ 只有姓名跟著女警變紅，番號一律黑的。
             code = ws.cell(row=ROW_CODE, column=index, value=column.code or None)
-            code.font = Font(name=FONT_NAME, size=FONT_SIZE)
+            code.font = Font(name=_font_name(column.code), size=plan.code)
             code.alignment = _CENTER
             code.border = _BORDER
     else:
         code = ws.cell(row=ROW_CODE, column=index, value=column.code or None)
-        code.font = Font(name=FONT_NAME, size=FONT_SIZE, color=_RED)
+        code.font = Font(name=_font_name(column.code), size=plan.code, color=_RED)
         code.alignment = _CENTER
         code.border = _BORDER
 
     for day in range(day_count):
         model = column.cells[day]
         cell = ws.cell(row=ROW_FIRST_DAY + day, column=index, value=model.text or None)
-        cell.font = Font(name=FONT_NAME, size=FONT_SIZE, color=_argb(model.color))
+        cell.font = Font(name=_font_name(model.text), size=cell_size, color=_argb(model.color))
         cell.alignment = _CENTER
         cell.border = _BORDER
 
@@ -344,7 +508,9 @@ def write_sheet(sheet: Sheet, path: str) -> None:
     columns = sheet.columns
     _setup_page(ws, sheet)
 
-    name_height = name_row_height(sheet)
+    plan = font_plan(sheet)
+    widths_pt = [_width_to_points(w) for w in column_widths(sheet)]
+    name_height = plan.name_row
     ws.row_dimensions[ROW_NAME].height = name_height
     ws.row_dimensions[ROW_CODE].height = CODE_ROW_HEIGHT
     row_height = day_row_height(sheet.day_count, name_height)
@@ -357,10 +523,11 @@ def write_sheet(sheet: Sheet, path: str) -> None:
             _write_note(ws, index, block)
         for column in block.columns:
             if column.kind == COL_TITLE:
-                _write_title_column(ws, index, sheet)
+                _write_title_column(ws, index, sheet, widths_pt[index - 1])
             else:
                 _write_column(
-                    ws, index, column, sheet.day_count, skip_name=bool(block.note)
+                    ws, index, column, sheet.day_count, plan, widths_pt[index - 1],
+                    skip_name=bool(block.note),
                 )
             index += 1
 

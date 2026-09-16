@@ -107,6 +107,10 @@
   ⚠️ 這類問題**容器驗不出來**——openpyxl 只負責寫檔，Excel 怎麼排版看不到，
   只能請維護者開「版面設定」回報縮放比例與頁數。
 
+- **XLS-6**: **Excel 打不開 openpyxl 寫的檔（COM `Workbooks.Open` 失敗）** →
+  CellRichText 裡有一段**只含換行**的 TextBlock，存檔時被當空白吃成空字串，Excel 判定毀損。
+  換行併進前後的文字段。⚠️ 用 COM 轉 PDF 驗證時要先刪舊 PDF，否則轉檔失敗會看到舊圖。
+
 #### QT：Qt 與 PDF 輸出
 
 - **QT-1**: **`import PySide6.QtGui` 在容器裡 `ImportError: libEGL.so.1`**
@@ -127,6 +131,18 @@
   模型的 BackgroundRole；資料確實設進去了（讀得回來），只是沒畫。要標色的表格
   掛一個先 `fillRect` 底色再畫文字的 delegate（`pairing_dialog._BackgroundDelegate`）。
   ⚠️ 單元測試讀 `item.background()` 會通過，**只有截圖看得出來**。
+
+- **QT-5**: **用 `tightBoundingRect` 量字來放大，中文字偏小又偏下** → 標楷體的中文字
+  `QFontMetricsF.tightBoundingRect` 回傳的是**整個字框**，不是筆畫：「休」量到 200
+  實際筆畫 165，「一」實際只有 28 高也量成整框；數字卻量得準。拿它算字級與置中，
+  中文字放大不夠、還往下偏（實測踩過）。正解：把字實際畫到灰階點陣、掃描墨跡取範圍
+  （`pdf_writer._ink_rect`，有快取）。
+  ⚠️ 只看數字格會以為量對了，要看「休」與星期那欄才看得出來。
+- **QT-6**: **PDF 裡「日」「星」整個擠到格子左邊，程式量的位置卻是對的** → 標楷體
+  （DFKai-SB）要靠字型微調指令才會把筆畫擺對；`drawText` 把字型子集嵌進 PDF，交給
+  閱讀器畫，不跑微調的閱讀器（QtPdf 預覽、部分瀏覽器內建）就畫歪。正解：
+  `QPainterPath.addText` 由 Qt 算好外框再 `fillPath`（`pdf_writer._draw_text`），
+  任何閱讀器都一樣；代價是 PDF 文字不能選取搜尋。粗體要自己描邊補回。
 
 #### ENV：環境與相依
 

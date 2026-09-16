@@ -22,6 +22,10 @@ WEIGHT_BY_MODE = {MODE_ROTATE: 1.1, MODE_FIXED: 1.2, MODE_BLANK: 1.2}
 
 MODE_LABELS = {MODE_ROTATE: "輪番", MODE_FIXED: "固定番", MODE_BLANK: "空白欄"}
 
+CODE_BELOW = "below"
+CODE_ABOVE = "above"
+CODE_POSITION_LABELS = {CODE_BELOW: "名字下方", CODE_ABOVE: "名字上方"}
+
 # 群組名稱字數上限（維護者裁示 2026-09-16）。實測（微軟正黑體 14pt、125%、1440 寬）：
 # 輪番群組的勤休卡片標題列 7 字以內版面不動，8～12 字擠窄左側模板卡片，
 # 13 字以上把視窗撐寬。名稱也直書印在月表欄標題，太長那邊同樣擠不下。
@@ -105,11 +109,12 @@ def copy_template(conn: sqlite3.Connection, template_id: int, name: str) -> int:
     for group in group_rows(conn, template_id):
         cur = conn.execute(
             "INSERT INTO T_Group(template_id, name, mode, range_expr, "
-            "header_before, reverse_order, note, col_weight, sort_order) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "header_before, reverse_order, code_position, note, col_weight, sort_order) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 new_id, group["name"], group["mode"], group["range_expr"],
-                group["header_before"], group["reverse_order"], group["note"],
+                group["header_before"], group["reverse_order"], group["code_position"],
+                group["note"],
                 group["col_weight"], group["sort_order"],
             ),
         )
@@ -219,6 +224,12 @@ def expand_codes(mode: str, expr: str) -> tuple[str, ...]:
     return blank_labels(expr) if mode == MODE_BLANK else expand_range(expr)
 
 
+def _code_position(value: str) -> str:
+    if value not in CODE_POSITION_LABELS:
+        raise TemplateError(f"未知的代號位置：{value}")
+    return value
+
+
 def normalize_expr(mode: str, expr: str) -> str:
     """存檔前整理範圍式：去頭尾空白，英文一律轉大寫。
 
@@ -258,6 +269,7 @@ def _assert_unique_name(
 def add_group(
     conn: sqlite3.Connection, template_id: int, name: str, mode: str, expr: str,
     header_before: bool = True, note: str = "", reverse_order: bool = False,
+    code_position: str = CODE_BELOW,
 ) -> int:
     """新增群組並展開槽位，排到最後。"""
     get_template(conn, template_id)
@@ -271,8 +283,10 @@ def add_group(
     ).fetchone()
     cur = conn.execute(
         "INSERT INTO T_Group(template_id, name, mode, range_expr, header_before, "
-        "reverse_order, note, col_weight, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (template_id, name, mode, expr, int(header_before), int(reverse_order), note,
+        "reverse_order, code_position, note, col_weight, sort_order) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (template_id, name, mode, expr, int(header_before), int(reverse_order),
+         _code_position(code_position), note,
          WEIGHT_BY_MODE[mode], (row["m"] or 0) + 1),
     )
     group_id = cur.lastrowid
@@ -284,6 +298,7 @@ def add_group(
 def update_group(
     conn: sqlite3.Connection, group_id: int, name: str, mode: str, expr: str,
     header_before: bool, note: str, reverse_order: bool = False,
+    code_position: str = CODE_BELOW,
 ) -> bool:
     """修改群組。模式或範圍有變時重新展開槽位並回傳 True（休與自訂代碼已清空）。"""
     old = _group_row(conn, group_id)
@@ -295,8 +310,9 @@ def update_group(
     weight = WEIGHT_BY_MODE[mode] if mode != old["mode"] else old["col_weight"]
     conn.execute(
         "UPDATE T_Group SET name = ?, mode = ?, range_expr = ?, header_before = ?, "
-        "reverse_order = ?, note = ?, col_weight = ? WHERE group_id = ?",
-        (name, mode, expr, int(header_before), int(reverse_order), note, weight, group_id),
+        "reverse_order = ?, code_position = ?, note = ?, col_weight = ? WHERE group_id = ?",
+        (name, mode, expr, int(header_before), int(reverse_order),
+         _code_position(code_position), note, weight, group_id),
     )
     if reshaped:
         _regenerate_slots(conn, group_id, len(codes))

@@ -57,6 +57,9 @@ TABLES = (
     -- 反向排序（右往左）：勾選後這個群組在月表上的欄位左右顛倒，第 1 格排最右邊。
     -- 只影響印出來的欄序；左側日期欄仍在群組左邊，配對表的格位順序不變。
     reverse_order INTEGER NOT NULL DEFAULT 0,
+    -- 代號位置（只對固定番類型有意義）：姓名欄合併後，代號橫排放在名字下方或上方。
+    -- 維護者 2026-09-16：固定番放下方、幹部放上方，做成設定不寫死群組名稱。
+    code_position TEXT NOT NULL DEFAULT 'below' CHECK (code_position IN ('above','below')),
     -- 跨整個區塊的註記，畫在姓名列的合併格裡。一行一筆文字。
     note        TEXT NOT NULL DEFAULT '',
     sort_order  INTEGER NOT NULL DEFAULT 0

@@ -22,6 +22,7 @@ from lib.db_utils import opened
 from lib.rota import MODE_BLANK, MODE_FIXED, MODE_ROTATE, RangeError
 from .member_dialog import _add_buttons, _ERR_BORDER_SS, _FIELD_W, _LABEL_W, _MARGIN
 from .ui_common import confirmBox, msgCritical, msgWarning
+from .widgets import installComboWheelGuard
 
 _MODES = (MODE_ROTATE, MODE_FIXED, MODE_BLANK)
 _HINTS = {
@@ -112,6 +113,17 @@ class GroupDialog(QDialog):
         self.w_reverse.setToolTip("勾選後這個群組在月表上的欄位左右顛倒，第 1 格排在最右邊")
         self.w_reverse.setChecked(bool(ex["reverse_order"]) if self.is_edit else False)
         form.addRow("", self.w_reverse)
+        # 代號位置：只有固定番類型用得到（合併格裡代號橫排在名字下方或上方）
+        self.w_code_pos = QComboBox()
+        for value, label in template.CODE_POSITION_LABELS.items():
+            self.w_code_pos.addItem(label, value)
+        self.w_code_pos.setFixedWidth(_FIELD_W)
+        installComboWheelGuard(self.w_code_pos)
+        if self.is_edit:
+            self.w_code_pos.setCurrentIndex(
+                max(self.w_code_pos.findData(ex["code_position"]), 0))
+        self.lbl_code_pos = QLabel("代號位置：")
+        form.addRow(self.lbl_code_pos, self.w_code_pos)
 
         self.w_note = QPlainTextEdit(ex["note"] if self.is_edit else "")
         self.w_note.setFixedWidth(_FIELD_W)
@@ -133,6 +145,9 @@ class GroupDialog(QDialog):
 
     def _onModeChanged(self, *_):
         self.w_expr.setPlaceholderText(_HINTS[self.mode()])
+        fixed = self.mode() == MODE_FIXED
+        self.w_code_pos.setVisible(fixed)
+        self.lbl_code_pos.setVisible(fixed)
         if self._expr_checked:
             self._validateExpr()
         else:
@@ -177,12 +192,14 @@ class GroupDialog(QDialog):
                     self.reshaped = template.update_group(
                         conn, self.group_id, self.w_name.text(), mode, expr,
                         self.w_header.isChecked(), self.w_note.toPlainText().strip(),
-                        reverse_order=self.w_reverse.isChecked())
+                        reverse_order=self.w_reverse.isChecked(),
+                        code_position=self.w_code_pos.currentData())
                 else:
                     self.group_id = template.add_group(
                         conn, self.template_id, self.w_name.text(), mode, expr,
                         self.w_header.isChecked(), self.w_note.toPlainText().strip(),
-                        reverse_order=self.w_reverse.isChecked())
+                        reverse_order=self.w_reverse.isChecked(),
+                        code_position=self.w_code_pos.currentData())
         except template.TemplateError as exc:
             msgWarning("無法儲存", str(exc), self)
             return

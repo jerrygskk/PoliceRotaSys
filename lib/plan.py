@@ -97,6 +97,7 @@ def _group_to_snapshot(row: sqlite3.Row, group: Group) -> dict:
         "mode": group.mode,
         "header_before": bool(row["header_before"]),
         "reverse_order": bool(row["reverse_order"]),
+        "code_position": row["code_position"],
         "col_weight": row["col_weight"],
         "note": row["note"],
         "slots": [
@@ -434,6 +435,8 @@ def build_sheet_for(
                     name=member["name"],
                     female=member["female"],
                     code=group.slots[member["slot_seq"] - 1].code,
+                    # 舊快照沒有這個鍵：一律當成名字下方
+                    code_above=data.get("code_position") == "above",
                 )
                 for member in members
             )

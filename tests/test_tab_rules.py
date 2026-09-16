@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication
 import main
 from lib import template
 from lib.db_utils import opened
-from lib.rota import MODE_BLANK, MODE_ROTATE
+from lib.rota import MODE_BLANK, MODE_FIXED, MODE_ROTATE
 from tabs import tab_rules
 from tabs.tab_rules import TabRules, _NAME_COL
 from ui_utils import group_dialog
@@ -75,6 +75,14 @@ class TestGroupDialog(_TempDb):
         dlg.w_reverse.setChecked(True)
         dlg._submit()
         self.assertEqual(self.groups()[0]["reverse_order"], 1)
+
+    def test_code_position_only_shows_for_fixed_groups(self):
+        big = self.groups()[0]
+        dlg = GroupDialog(self.db, self.tpl, existing=big)
+        self.addCleanup(dlg.deleteLater)
+        self.assertTrue(dlg.w_code_pos.isHidden())
+        dlg.w_mode.setCurrentIndex(dlg.w_mode.findData(MODE_FIXED))
+        self.assertFalse(dlg.w_code_pos.isHidden())
 
     def test_bad_range_shows_inline_error_without_popup(self):
         dlg = GroupDialog(self.db, self.tpl)

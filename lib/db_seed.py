@@ -67,6 +67,9 @@ SEED_GROUPS = (
     ("快打勤務", "blank", "快打勤務", (), False, "", 1.2),
 )
 
+# 代號放在名字上方的群組（維護者：幹部的代號在名字上方，其餘固定番在下方）。
+SEED_CODE_ABOVE = frozenset({"幹部"})
+
 DEFAULT_SETTINGS = {
     KEY_UNIT_NAME: "○○分局○○派出所",
     KEY_OUTPUT_DIR: "",
@@ -127,8 +130,10 @@ def _seed_template(conn: sqlite3.Connection, template_name: str) -> None:
         cur = conn.execute(
             "INSERT INTO T_Group"
             "(template_id, name, mode, range_expr, header_before, "
-            "note, col_weight, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (template_id, name, mode, expr, 1 if header else 0, note, weight, order),
+            "code_position, note, col_weight, sort_order) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (template_id, name, mode, expr, 1 if header else 0,
+             "above" if name in SEED_CODE_ABOVE else "below", note, weight, order),
         )
         group_id = cur.lastrowid
         rest_set = set(rests)
