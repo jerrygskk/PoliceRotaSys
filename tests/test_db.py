@@ -194,3 +194,28 @@ class TestSettings(_DbTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOldDatabaseIsUpgraded(unittest.TestCase):
+    """⚠️ 現場已在用的資料庫缺後來加的欄位，開庫時要補，不然整個程式開不起來。"""
+
+    def test_missing_group_columns_are_added(self):
+        with tempfile.TemporaryDirectory(prefix="rota-old-") as folder:
+            path = str(Path(folder) / "old.db")
+            conn = db_utils.connect(path)
+            db_schema.create_all(conn)
+            db_seed.seed_all(conn)
+            # 模擬舊版：拿掉兩個後加的欄位
+            conn.execute("ALTER TABLE T_Group DROP COLUMN code_position")
+            conn.execute("ALTER TABLE T_Group DROP COLUMN reverse_order")
+            conn.commit()
+            db_schema.create_all(conn)
+            rows = conn.execute(
+                "SELECT name, mode, code_position, reverse_order FROM T_Group"
+            ).fetchall()
+            conn.close()
+        self.assertTrue(rows)
+        for name, mode, position, reverse in rows:
+            self.assertEqual(reverse, 0)
+            expected = "above" if (mode, name) == ("fixed", "幹部") else "below"
+            self.assertEqual(position, expected, name)

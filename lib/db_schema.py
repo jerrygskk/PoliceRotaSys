@@ -95,10 +95,35 @@ INDEXES = (
 )
 
 
+# 後來才加的欄位：已在現場用的資料庫 CREATE TABLE IF NOT EXISTS 不會補，要自己 ALTER。
+# ⚠️ 少了欄位整個程式開不起來（v0.1.0-beta 第二版踩過：群組表缺 code_position）。
+# 這是**真實資料的相容退路**，不可拿掉。
+_LATE_COLUMNS = (
+    ("T_Group", "reverse_order", "INTEGER NOT NULL DEFAULT 0"),
+    ("T_Group", "code_position",
+     "TEXT NOT NULL DEFAULT 'below' CHECK (code_position IN ('above','below'))"),
+)
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    for table, column, decl in _LATE_COLUMNS:
+        have = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column in have:
+            continue
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        if column == "code_position":
+            # 比照種子資料：固定番的「幹部」代號放名字上方
+            conn.execute(
+                "UPDATE T_Group SET code_position = 'above' "
+                "WHERE mode = 'fixed' AND name = '幹部'"
+            )
+
+
 def create_all(conn: sqlite3.Connection) -> None:
     """建立（或補齊）所有結構。可重複執行。"""
     for statement in (*TABLES, *INDEXES):
         conn.execute(statement)
+    _add_missing_columns(conn)
     conn.execute(
         "INSERT OR IGNORE INTO App_Settings(key, value) VALUES ('schema_version', ?)",
         (str(SCHEMA_VERSION),),
