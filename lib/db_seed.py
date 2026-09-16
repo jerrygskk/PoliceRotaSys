@@ -3,9 +3,8 @@
 沒有匯入機制——不從舊 Excel 讀資料。程式第一次開起來時，資料庫裡就備好
 可以直接動手改的東西：
 
-  - 人員：一份假名模板
-  - 輪番設定：一份**草稿**（不是啟用版本）。給啟用版等於逼承辦人第一件事
-    就是複製為草稿
+  - 人員：一份假名名單
+  - 輪番設定：一份可以直接改的模板
 
 ⚠️ 種子姓名一律虛構。本專案是 public repo，見 tests/test_no_pii.py。
 """
@@ -20,7 +19,7 @@ from lib.rota import MODE_BLANK, blank_labels, expand_range
 
 # ⚠️ 全部是虛構姓名，不得替換成真實同仁。
 #
-# 人數刻意等於預設草稿三個群組的總格數（20 + 8 + 6 = 34）——模板若配不滿
+# 人數刻意等於預設模板三個群組的總格數（20 + 8 + 6 = 34）——模板若配不滿
 # 自己的預設規則，第一次開起來就會產出有空欄的月表，承辦人會以為程式壞了。
 # 改動 SEED_GROUPS 時要回頭核對這個數字（tests/test_db.py 釘住）。
 SEED_MEMBERS = (
@@ -36,27 +35,23 @@ SEED_MEMBERS = (
     "孫振宇", "高淑貞", "范文傑", "石雅芬", "尤建德", "溫柏翰",
 )
 
-# 預設草稿：照現行紙本的區塊順序（DEVELOPER §8）。
+# 預設模板：照現行紙本的區塊順序（DEVELOPER §8）。
 #
 # ⚠️ blank 模式的 range_expr 是**逗號分隔的字面欄標題**，不是範圍式。
 # 那幾欄有標題有格線但格子全空，供承辦人手寫（紙本上是「休」「補」
 # 「通補」那些），不配人也不算番號。
 # 模板裡先標幾位女警，讓承辦人一開起來就看得到「紅字＝女警」這件事。
 # ⚠️ 全部是虛構姓名。
-SEED_FEMALE = frozenset({
-    "李小華", "陳小美", "林小芳", "劉淑芬", "楊雅婷", "鄭淑娟",
-    "郭美玲", "曾惠雯", "何雅琪", "邱佩珊", "方怡君", "馮秀琴",
-    "高淑貞", "石雅芬",
-})
+SEED_FEMALE = frozenset({"李小華", "陳小美", "方怡君"})
 
-# 紙本上早／中／晚三欄的上方那段班別說明，逐行不同顏色，照抄。
+# 紙本上早／中／晚三欄的上方那段班別說明，一行一筆純文字。
 # ⚠️ 內容提到的番號（1-5、16 等）與輪番規則綁在一起，換單位就不一樣，
-# 所以它存在規則版本裡、跟著一起凍結，不是寫死在程式。
+# 所以它存在模板裡，並隨月表一起拷進快照，不是寫死在程式。
 SEED_SHIFT_NOTE = (
-    "blue|晚班:(1-5、16)\n"
-    "red|早班:(8-12、15)\n"
-    "black|中班(17.18)\n"
-    "red|限填1人"
+    "晚班:(1-5、16)\n"
+    "早班:(8-12、15)\n"
+    "中班(17.18)\n"
+    "限填1人"
 )
 
 # 欄寬權重由維護者指定：輪番 1.1、固定番 1.2、劃假 1.4、幹部 1.2。
@@ -67,7 +62,7 @@ SEED_GROUPS = (
     ("大輪番", "rotate", "1-20", (6, 7, 13, 14, 19, 20), True, "", 1.1),
     ("固定番", "fixed", "21-28", (), True, "", 1.2),
     ("同仁專案臨檢", "blank", "同仁專案臨檢", (), True, "", 1.2),
-    ("班別", "blank", "早,中,晚", (), False, SEED_SHIFT_NOTE, 1.4),
+    ("劃假", "blank", "早,中,晚", (), False, SEED_SHIFT_NOTE, 1.4),
     ("幹部", "fixed", "A-F", (), False, "", 1.2),
     ("快打勤務", "blank", "快打勤務", (), False, "", 1.2),
 )
@@ -83,11 +78,11 @@ def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def seed_all(conn: sqlite3.Connection, ruleset_name: str = "輪番規則") -> None:
+def seed_all(conn: sqlite3.Connection, template_name: str = "預設範例") -> None:
     """塞入種子資料。已經有資料就不重複塞，可重複執行。"""
     _seed_settings(conn)
     _seed_members(conn)
-    _seed_draft(conn, ruleset_name)
+    _seed_template(conn, template_name)
     conn.commit()
 
 
@@ -116,37 +111,32 @@ def _slot_count(mode: str, expr: str) -> int:
     return len(blank_labels(expr) if mode == MODE_BLANK else expand_range(expr))
 
 
-def _seed_draft(conn: sqlite3.Connection, ruleset_name: str) -> None:
-    if conn.execute("SELECT 1 FROM Ruleset_Version LIMIT 1").fetchone():
+def _seed_template(conn: sqlite3.Connection, template_name: str) -> None:
+    if conn.execute("SELECT 1 FROM Rota_Template LIMIT 1").fetchone():
         return
 
-    cur = conn.execute("INSERT INTO Ruleset(name) VALUES (?)", (ruleset_name,))
-    ruleset_id = cur.lastrowid
-
     cur = conn.execute(
-        "INSERT INTO Ruleset_Version"
-        "(ruleset_id, draft_name, version_no, status, created_at, note) "
-        "VALUES (?, ?, NULL, '草稿', ?, ?)",
-        (ruleset_id, "預設範例", _now(), "程式內建的起始草稿，請改成貴單位的實際規則"),
+        "INSERT INTO Rota_Template(name, created_at, note) VALUES (?, ?, ?)",
+        (template_name, _now(), "程式內建的起始模板，請改成貴單位的實際規則"),
     )
-    version_id = cur.lastrowid
+    template_id = cur.lastrowid
 
     for order, (name, mode, expr, rests, header, note, weight) in enumerate(
         SEED_GROUPS, start=1
     ):
         cur = conn.execute(
-            "INSERT INTO RV_Group"
-            "(version_id, name, mode, range_expr, header_before, "
+            "INSERT INTO T_Group"
+            "(template_id, name, mode, range_expr, header_before, "
             "note, col_weight, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (version_id, name, mode, expr, 1 if header else 0, note, weight, order),
+            (template_id, name, mode, expr, 1 if header else 0, note, weight, order),
         )
         group_id = cur.lastrowid
         rest_set = set(rests)
         conn.executemany(
-            "INSERT INTO RV_Slot(version_id, group_id, seq, is_rest, code_override) "
-            "VALUES (?, ?, ?, ?, NULL)",
+            "INSERT INTO T_Slot(group_id, seq, is_rest, code_override) "
+            "VALUES (?, ?, ?, NULL)",
             [
-                (version_id, group_id, seq, 1 if seq in rest_set else 0)
+                (group_id, seq, 1 if seq in rest_set else 0)
                 for seq in range(1, _slot_count(mode, expr) + 1)
             ],
         )

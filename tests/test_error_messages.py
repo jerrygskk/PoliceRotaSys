@@ -17,14 +17,14 @@ from PySide6.QtWidgets import QApplication
 import ui_utils
 from lib.plan import PlanError
 from lib.rota import GroupError, RangeError
-from lib.ruleset import RulesetError
+from lib.template import TemplateError
 
 _app = QApplication.instance() or QApplication([])
 
 
 class TestFriendlyErrorMessage(unittest.TestCase):
     def test_project_errors_are_shown_as_is(self):
-        for exc in (RulesetError("草稿最多 3 份，請先刪掉不要的"),
+        for exc in (TemplateError("已經有叫「大輪番」的群組"),
                     PlanError("2026 年 10 月已經有月表了"),
                     RangeError("「20-1」的起迄相反了"),
                     GroupError("代碼「18」同時出現在兩個群組")):

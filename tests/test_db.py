@@ -1,15 +1,16 @@
-"""資料庫結構、trigger 與種子資料的測試。⚠️ 姓名一律虛構。
+"""資料庫結構與種子資料的測試。⚠️ 姓名一律虛構。
 
-最要緊的是 TestImmutabilityTriggers：規則版本的「不可修改」是靠 trigger
-而不是程式自律，所以必須直接下 SQL 去撞它，確認資料庫層真的擋得住。
+⚠️ 這一版**沒有任何 trigger**：規則版本鎖死那一整套已經拿掉。歷史正確性
+改由月表自己的 snapshot 保證（見 tests/test_plan.py 的 TestSnapshotIsDetached），
+模板與月表都可以隨時改、隨時刪。
 """
+import json
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 
-from lib import db_schema, db_seed, db_utils, ruleset
-from lib.rota import MODE_ROTATE
+from lib import db_schema, db_seed, db_utils, template
 
 
 class _DbTestCase(unittest.TestCase):
@@ -26,10 +27,16 @@ class _DbTestCase(unittest.TestCase):
     def seed(self):
         db_seed.seed_all(self.conn)
 
-    def draft_id(self):
+    def template_id(self):
         return self.conn.execute(
-            "SELECT version_id FROM Ruleset_Version WHERE status = '草稿'"
+            "SELECT template_id FROM Rota_Template"
         ).fetchone()[0]
+
+    def insert_plan(self, year=2026, month=10, origin="自訂起始"):
+        return self.conn.execute(
+            "INSERT INTO Month_Plan(year, month, origin, created_at, snapshot) "
+            "VALUES (?, ?, ?, 'x', '{}')", (year, month, origin)
+        ).lastrowid
 
 
 class TestSchema(_DbTestCase):
@@ -40,9 +47,16 @@ class TestSchema(_DbTestCase):
             )
         }
         self.assertTrue({
-            "App_Settings", "Member", "Ruleset", "Ruleset_Version",
-            "RV_Group", "RV_Slot", "Month_Plan", "Month_Seed",
+            "App_Settings", "Member", "Rota_Template",
+            "T_Group", "T_Slot", "Month_Plan",
         }.issubset(names))
+
+    def test_no_triggers_are_left(self):
+        """⚠️ 鎖死規則版本的 trigger 全部拿掉了，別再長回來。"""
+        rows = self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+        ).fetchall()
+        self.assertEqual(rows, [])
 
     def test_create_all_is_idempotent(self):
         db_schema.create_all(self.conn)
@@ -55,169 +69,48 @@ class TestSchema(_DbTestCase):
 
     def test_month_is_range_checked(self):
         with self.assertRaises(sqlite3.IntegrityError):
-            self.conn.execute(
-                "INSERT INTO Month_Plan(year, month, ruleset_version_id, "
-                "origin, created_at) VALUES (2026, 13, 1, 'chain', 'x')"
-            )
+            self.insert_plan(month=13)
 
     def test_one_plan_per_month(self):
-        self.seed()
-        vid = self.draft_id()
-        self.conn.execute(
-            "INSERT INTO Month_Plan(year, month, ruleset_version_id, origin, "
-            "created_at) VALUES (2026, 10, ?, 'reset', 'x')", (vid,)
-        )
+        self.insert_plan()
         with self.assertRaises(sqlite3.IntegrityError):
-            self.conn.execute(
-                "INSERT INTO Month_Plan(year, month, ruleset_version_id, origin,"
-                " created_at) VALUES (2026, 10, ?, 'reset', 'x')", (vid,)
-            )
+            self.insert_plan()
 
-
-class TestImmutabilityTriggers(_DbTestCase):
-    """⚠️ 直接下 SQL 撞 trigger——這些保證不能只靠程式自律。"""
-
-    def setUp(self):
-        super().setUp()
-        self.seed()
-        self.version_id = self.draft_id()
-        self.group_id = self.conn.execute(
-            "SELECT group_id FROM RV_Group WHERE version_id = ? LIMIT 1",
-            (self.version_id,),
-        ).fetchone()[0]
-
-    def test_draft_can_be_edited(self):
+    def test_a_month_can_be_edited_and_deleted(self):
+        """⚠️ 承辦人排下個月本來就會邊排邊調——資料庫不擋修改也不擋刪除。"""
+        plan_id = self.insert_plan()
         self.conn.execute(
-            "UPDATE RV_Group SET name = '改過的名字' WHERE group_id = ?",
-            (self.group_id,),
+            "UPDATE Month_Plan SET snapshot = ? WHERE plan_id = ?",
+            (json.dumps({"groups": []}), plan_id),
         )
-        self.conn.execute(
-            "UPDATE RV_Slot SET is_rest = 1 WHERE group_id = ? AND seq = 1",
-            (self.group_id,),
-        )
-
-    def test_activated_group_cannot_be_updated(self):
-        ruleset.activate(self.conn, self.version_id)
-        with self.assertRaisesRegex(sqlite3.IntegrityError, "不可修改"):
-            self.conn.execute(
-                "UPDATE RV_Group SET name = 'x' WHERE group_id = ?",
-                (self.group_id,),
-            )
-
-    def test_activated_slot_cannot_be_updated(self):
-        ruleset.activate(self.conn, self.version_id)
-        with self.assertRaisesRegex(sqlite3.IntegrityError, "不可修改"):
-            self.conn.execute(
-                "UPDATE RV_Slot SET is_rest = 1 WHERE group_id = ? AND seq = 1",
-                (self.group_id,),
-            )
-
-    def test_activated_slot_cannot_be_deleted(self):
-        ruleset.activate(self.conn, self.version_id)
-        with self.assertRaisesRegex(sqlite3.IntegrityError, "不可修改"):
-            self.conn.execute(
-                "DELETE FROM RV_Slot WHERE group_id = ?", (self.group_id,)
-            )
-
-    def test_activated_version_cannot_be_deleted(self):
-        ruleset.activate(self.conn, self.version_id)
-        with self.assertRaisesRegex(sqlite3.IntegrityError, "不可刪除"):
-            self.conn.execute(
-                "DELETE FROM Ruleset_Version WHERE version_id = ?",
-                (self.version_id,),
-            )
-
-    def test_activated_version_cannot_be_turned_back_into_a_draft(self):
-        """⚠️ 不擋這條的話，改一個欄位就能把鎖解開，其他 trigger 全白做。"""
-        ruleset.activate(self.conn, self.version_id)
-        with self.assertRaisesRegex(sqlite3.IntegrityError, "不可改回草稿"):
-            self.conn.execute(
-                "UPDATE Ruleset_Version SET status = '草稿' WHERE version_id = ?",
-                (self.version_id,),
-            )
-
-    def test_activated_version_number_cannot_be_changed(self):
-        ruleset.activate(self.conn, self.version_id)
-        with self.assertRaisesRegex(sqlite3.IntegrityError, "不可修改"):
-            self.conn.execute(
-                "UPDATE Ruleset_Version SET version_no = 99 WHERE version_id = ?",
-                (self.version_id,),
-            )
-
-    def test_fourth_draft_is_rejected(self):
-        rs_id = self.conn.execute("SELECT ruleset_id FROM Ruleset").fetchone()[0]
-        ruleset.create_draft(self.conn, rs_id, "第二份")
-        ruleset.create_draft(self.conn, rs_id, "第三份")
-        with self.assertRaises((sqlite3.IntegrityError, ruleset.RulesetError)):
-            ruleset.create_draft(self.conn, rs_id, "第四份")
-
-    def test_month_plan_cannot_be_updated(self):
-        self.conn.execute(
-            "INSERT INTO Month_Plan(year, month, ruleset_version_id, origin, "
-            "created_at) VALUES (2026, 10, ?, 'reset', 'x')", (self.version_id,)
-        )
-        with self.assertRaisesRegex(sqlite3.IntegrityError, "刪除後重新產生"):
-            self.conn.execute("UPDATE Month_Plan SET origin = 'chain'")
-
-
-class TestMonthSeedConstraints(_DbTestCase):
-    def setUp(self):
-        super().setUp()
-        self.seed()
-        vid = self.draft_id()
-        self.groups = [
-            r[0] for r in self.conn.execute(
-                "SELECT group_id FROM RV_Group WHERE version_id = ? "
-                "ORDER BY sort_order", (vid,)
-            )
-        ]
-        cur = self.conn.execute(
-            "INSERT INTO Month_Plan(year, month, ruleset_version_id, origin, "
-            "created_at) VALUES (2026, 10, ?, 'reset', 'x')", (vid,)
-        )
-        self.plan_id = cur.lastrowid
-
-    def _seed_row(self, group_idx, member_id, slot_seq, row_no=1):
-        self.conn.execute(
-            "INSERT INTO Month_Seed(plan_id, rv_group_id, member_id, row_no, "
-            "slot_seq) VALUES (?, ?, ?, ?, ?)",
-            (self.plan_id, self.groups[group_idx], member_id, row_no, slot_seq),
-        )
-
-    def test_a_member_cannot_be_in_two_groups(self):
-        """DEVELOPER §9：同一人同時在兩個群組，不允許。"""
-        self._seed_row(0, 1, 1)
-        with self.assertRaises(sqlite3.IntegrityError):
-            self._seed_row(1, 1, 1)
-
-    def test_a_slot_cannot_be_taken_twice(self):
-        self._seed_row(0, 1, 5)
-        with self.assertRaises(sqlite3.IntegrityError):
-            self._seed_row(0, 2, 5, row_no=2)
-
-    def test_deleting_a_plan_cascades_to_its_seeds(self):
-        self._seed_row(0, 1, 1)
-        self.conn.execute("DELETE FROM Month_Plan WHERE plan_id = ?", (self.plan_id,))
+        self.conn.execute("DELETE FROM Month_Plan WHERE plan_id = ?", (plan_id,))
         self.assertEqual(
-            self.conn.execute("SELECT COUNT(*) FROM Month_Seed").fetchone()[0], 0
+            self.conn.execute("SELECT COUNT(*) FROM Month_Plan").fetchone()[0], 0
         )
+
+    def test_a_used_template_can_be_edited_and_deleted(self):
+        self.seed()
+        self.insert_plan()
+        tid = self.template_id()
+        gid = template.group_rows(self.conn, tid)[0]["group_id"]
+        template.toggle_rest(self.conn, gid, 1)
+        template.delete_template(self.conn, tid)
+        self.assertEqual(template.list_templates(self.conn), [])
 
 
 class TestSeed(_DbTestCase):
-    def test_seed_creates_members_and_a_draft(self):
+    def test_only_three_female_officers_in_the_seed(self):
+        """模板標幾位女警讓人看得到「紅字＝女警」，三位就夠。"""
+        self.assertEqual(len(db_seed.SEED_FEMALE), 3)
+        self.assertTrue(set(db_seed.SEED_FEMALE) <= set(db_seed.SEED_MEMBERS))
+
+    def test_seed_creates_members_and_one_template(self):
         self.seed()
         self.assertEqual(
             self.conn.execute("SELECT COUNT(*) FROM Member").fetchone()[0],
             len(db_seed.SEED_MEMBERS),
         )
-        version = self.conn.execute("SELECT * FROM Ruleset_Version").fetchone()
-        self.assertEqual(version["status"], "草稿")
-        self.assertIsNone(version["version_no"])
-
-    def test_seed_is_a_draft_not_an_active_version(self):
-        """給啟用版等於逼承辦人第一件事就是複製為草稿（DEVELOPER §6）。"""
-        self.seed()
-        self.assertIsNone(ruleset.latest_active(self.conn))
+        self.assertEqual(len(template.list_templates(self.conn)), 1)
 
     def test_seed_is_idempotent(self):
         self.seed()
@@ -230,14 +123,14 @@ class TestSeed(_DbTestCase):
     def test_seed_groups_match_the_paper_form(self):
         self.seed()
         rows = self.conn.execute(
-            "SELECT name, mode, range_expr FROM RV_Group ORDER BY sort_order"
+            "SELECT name, mode, range_expr FROM T_Group ORDER BY sort_order"
         ).fetchall()
         self.assertEqual(
             [tuple(r) for r in rows],
             [("大輪番", "rotate", "1-20"),
              ("固定番", "fixed", "21-28"),
              ("同仁專案臨檢", "blank", "同仁專案臨檢"),
-             ("班別", "blank", "早,中,晚"),
+             ("劃假", "blank", "早,中,晚"),
              ("幹部", "fixed", "A-F"),
              ("快打勤務", "blank", "快打勤務")],
         )
@@ -246,7 +139,7 @@ class TestSeed(_DbTestCase):
         self.seed()
         rests = [
             r[0] for r in self.conn.execute(
-                "SELECT seq FROM RV_Slot WHERE is_rest = 1 ORDER BY seq"
+                "SELECT seq FROM T_Slot WHERE is_rest = 1 ORDER BY seq"
             )
         ]
         self.assertEqual(rests, [6, 7, 13, 14, 19, 20])
@@ -266,14 +159,15 @@ class TestSeed(_DbTestCase):
             len(db_seed.SEED_MEMBERS), len(set(db_seed.SEED_MEMBERS))
         )
 
-    def test_the_shift_note_is_stored_with_the_ruleset(self):
-        """⚠️ 註記提到番號，換單位就不一樣，所以跟著規則版本凍結。"""
+    def test_the_shift_note_is_stored_with_the_template(self):
+        """⚠️ 註記提到番號，換單位就不一樣，所以存在模板裡、隨月表拷進快照。"""
         self.seed()
         note = self.conn.execute(
-            "SELECT note FROM RV_Group WHERE name = '班別'"
+            "SELECT note FROM T_Group WHERE name = '劃假'"
         ).fetchone()[0]
         self.assertIn("早班", note)
-        self.assertIn("blue|", note)
+        # ⚠️ 註記一律純文字，不得再出現「顏色|」前綴（維護者裁示 2026-09-16）
+        self.assertNotIn("|", note)
 
     def test_default_unit_name_is_a_placeholder(self):
         """⚠️ public repo：種子不得含真實單位名。"""
@@ -297,63 +191,6 @@ class TestSettings(_DbTestCase):
 
 
 
-class TestCrossVersionIsBlocked(_DbTestCase):
-    """⚠️ 配對必須配到「這個月所用那一版」的群組；槽位的版本也要與群組一致。
-
-    原本只有 plan._assert_seeds_complete 在程式端檢查，繞過程式直接寫就會產生
-    一張規則版本與配對對不上的月表，印出來還看不出異常（2026-09-16 檢視發現）。
-    """
-
-    def setUp(self):
-        super().setUp()
-        db_seed.seed_all(self.conn)
-        self.draft = self.conn.execute(
-            "SELECT version_id FROM Ruleset_Version WHERE status = '草稿'"
-        ).fetchone()[0]
-        self.other = ruleset.create_draft(
-            self.conn,
-            self.conn.execute("SELECT ruleset_id FROM Ruleset").fetchone()[0],
-            "另一版")
-        self.other_group = ruleset.add_group(
-            self.conn, self.other, "他版群組", MODE_ROTATE, "1-3")
-        self.member = self.conn.execute("SELECT member_id FROM Member LIMIT 1").fetchone()[0]
-        self.conn.execute(
-            "INSERT INTO Month_Plan(year, month, ruleset_version_id, origin, created_at)"
-            " VALUES (2026, 10, ?, 'reset', 'now')", (self.draft,))
-        self.plan_id = self.conn.execute("SELECT plan_id FROM Month_Plan").fetchone()[0]
-
-    def _seed(self, group_id):
-        self.conn.execute(
-            "INSERT INTO Month_Seed(plan_id, rv_group_id, member_id, row_no, slot_seq)"
-            " VALUES (?, ?, ?, 1, 1)", (self.plan_id, group_id, self.member))
-
-    def test_seed_from_another_version_is_refused(self):
-        with self.assertRaisesRegex(sqlite3.DatabaseError, "不屬於這個月的規則版本"):
-            self._seed(self.other_group)
-
-    def test_seed_from_the_same_version_is_allowed(self):
-        same = self.conn.execute(
-            "SELECT group_id FROM RV_Group WHERE version_id = ? LIMIT 1", (self.draft,)
-        ).fetchone()[0]
-        self._seed(same)          # 不應丟例外
-
-    def test_slot_version_must_match_its_group(self):
-        with self.assertRaisesRegex(sqlite3.DatabaseError, "與所屬群組不一致"):
-            self.conn.execute(
-                "INSERT INTO RV_Slot(version_id, group_id, seq, is_rest) VALUES (?, ?, 99, 0)",
-                (self.draft, self.other_group))
-
-    def test_draft_limit_comes_from_one_constant(self):
-        """trigger 與 lib/ruleset.py 共用 db_schema.MAX_DRAFTS。"""
-        self.assertEqual(ruleset.MAX_DRAFTS, db_schema.MAX_DRAFTS)
-        for i in range(db_schema.MAX_DRAFTS + 2):
-            try:
-                ruleset.create_draft(self.conn, 1, f"草稿{i}")
-            except ruleset.RulesetError as exc:
-                self.assertIn(str(db_schema.MAX_DRAFTS), str(exc))
-                break
-        else:
-            self.fail("草稿上限沒有生效")
 
 if __name__ == "__main__":
     unittest.main()

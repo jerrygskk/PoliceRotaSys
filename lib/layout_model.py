@@ -28,7 +28,6 @@ BLACK = "black"
 RED = "red"
 BLUE = "blue"
 
-NOTE_COLORS = {BLACK, RED, BLUE}
 
 WEEKDAY_LABELS = ("一", "二", "三", "四", "五", "六", "日")
 SATURDAY = 5
@@ -66,7 +65,7 @@ class Column:
 # 欄寬權重。⚠️ 放在版面模型裡是刻意的——兩個 renderer 必須用同一份，
 # 否則 Excel 印出來跟 PDF 會不一樣寬。
 #
-# ⚠️ **每個群組的權重是設定（`RV_Group.col_weight`），不是由欄的種類推的。**
+# ⚠️ **每個群組的權重是設定（`群組設定的 col_weight`），不是由欄的種類推的。**
 # 第一版靠「格子是不是空的」去猜，結果所有手寫欄一律同寬——但固定番、劃假區、
 # 幹部要寫的東西不一樣多，現場要能分別調。
 WEIGHT_TITLE = 1.0
@@ -82,35 +81,16 @@ def column_weight(column: "Column") -> float:
     return column.weight
 
 
-@dataclass(frozen=True)
-class NoteLine:
-    """註記的一行。紙本上那段班別說明是逐行不同顏色的，照抄。"""
+def parse_note(raw: str) -> tuple[str, ...]:
+    """把設定裡的註記文字拆成逐行純文字（空行略過）。
 
-    text: str
-    color: str = BLACK
-
-
-def parse_note(raw: str) -> tuple[NoteLine, ...]:
-    """把設定裡的註記文字解析成逐行的 :class:`NoteLine`。
-
-    格式：一行一筆，``顏色|文字``；顏色省略時為黑色。例如::
-
-        blue|晚班:(1-5、16)
-        red|早班:(8-12、15)
-        black|中班(17.18)
-        red|限填1人
+    ⚠️ **註記一律黑字，不帶顏色**（維護者裁示 2026-09-16）。原本格式是
+    ``顏色|文字``，需要標重點的人自己在紙本上畫即可，不必為此在設定裡
+    多一個看不懂的語法。
     """
-    lines: list[NoteLine] = []
-    for raw_line in raw.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        head, sep, rest = line.partition("|")
-        if sep and head.strip() in NOTE_COLORS:
-            lines.append(NoteLine(rest.strip(), head.strip()))
-        else:
-            lines.append(NoteLine(line, BLACK))
-    return tuple(lines)
+    return tuple(
+        line.strip() for line in raw.splitlines() if line.strip()
+    )
 
 
 @dataclass(frozen=True)
@@ -118,12 +98,12 @@ class Block:
     """一個左右並排的區塊。``name`` 為空者是重複的日期／星期欄。
 
     ``note`` 有值時要畫成**一個跨該區塊所有欄的合併格**，放在姓名列
-    （紙本上早／中／晚三欄上方那段班別說明就是這樣，逐行不同顏色）。
+    （紙本上早／中／晚三欄上方那段班別說明就是這樣），一行一筆純文字。
     """
 
     name: str
     columns: tuple[Column, ...]
-    note: tuple[NoteLine, ...] = ()
+    note: tuple[str, ...] = ()
 
     @property
     def is_header(self) -> bool:
@@ -164,8 +144,8 @@ class Section:
     # 這個區塊左邊要不要再放一次日期／星期欄。現行紙本不是每個區塊都有。
     header_before: bool = True
     # 跨整個區塊的註記（逐行帶顏色），畫在姓名列的合併格裡。
-    note: tuple[NoteLine, ...] = ()
-    # 這個區塊每欄的相對寬度（RV_Group.col_weight）。
+    note: tuple[str, ...] = ()
+    # 這個區塊每欄的相對寬度（群組設定的 col_weight）。
     weight: float = WEIGHT_DEFAULT
 
 

@@ -434,14 +434,12 @@ class TestNameRowHeight(unittest.TestCase):
         self.assertGreaterEqual(available, needed)
 
     def test_a_four_line_note_fits(self):
-        from lib.layout_model import NoteLine
-
-        note = tuple(NoteLine(f"第 {i} 行") for i in range(4))
+        note = tuple(f"第 {i} 行" for i in range(4))
         sheet = build_sheet(
             UNIT, 2026, 10,
-            [Section("班別", (Entry("早"), Entry("中"), Entry("晚")),
+            [Section("劃假", (Entry("早"), Entry("中"), Entry("晚")),
                      header_before=False, note=note)],
-            blank_sections=frozenset({"班別"}),
+            blank_sections=frozenset({"劃假"}),
         )
         needed = 4 * xlsx_writer.NOTE_FONT_SIZE * xlsx_writer.NOTE_LINE_RATIO
         self.assertGreaterEqual(xlsx_writer.name_row_height(sheet), needed)

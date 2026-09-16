@@ -1,22 +1,23 @@
 """輪番設定分頁（DEVELOPER §4「輪番設定」）。
 
 版面：淺灰底上三張卡片
-  - 左：「規則版本」卡片——每筆版本是一張小卡（名稱＋狀態標籤），下方草稿操作鈕與「啟用」
+  - 左：「輪番模板」卡片——每份模板是一張小卡（名稱＋建立日期），下方新增／複製／改名／刪除
   - 右上：提示條＋「群組」卡片（拖拉把手／序號／名稱／模式／型態／範圍），新增與修改走 GroupDialog
   - 右下：槽位卡片——每格一個圓角方塊。輪番群組點一下切換輪休；雙擊自訂代碼；
     輪休是淡紅底、自訂代碼是淡黃底；標題列右側「輪番群組的番號都由 1 起算」只作用在輪番類型
 
-⚠️ 選到啟用版本時整個編輯區唯讀。按鈕反灰擋不住雙擊、點方塊、Enter、拖拉，
-所以**每個進入點都自己檢查一次** `_editable()`；真正的保證仍在資料庫 trigger。
+⚠️ 模板可隨時修改——改模板**不影響已經產生的月表**（月表有自己的快照，
+見 lib/plan.py）。沒選到模板時整個編輯區不可操作；按鈕反灰擋不住雙擊、
+點方塊、Enter、拖拉，所以**每個進入點都自己檢查一次** `_editable()`。
 """
 from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QListWidget, QListWidgetItem,
     QHeaderView, QLabel, QSplitter, QGridLayout, QTableWidget, QCheckBox,
-    QApplication,
+    QApplication, QScrollArea, QFrame,
 )
 
-from lib import ruleset
+from lib import template
 from lib.db_utils import KEY_SLOT_NUMBER_FROM_ONE, get_setting, opened, set_setting
 from lib.members import parse_seq_move_target
 from lib.rota import KIND_ALPHA, KIND_CJK, KIND_NUM, MODE_BLANK, MODE_ROTATE, RangeError, detect_kind
@@ -29,20 +30,23 @@ from ui_utils.group_dialog import GroupDialog
 from ui_utils.sort_table import makeHandleItem, makeItem, makeSeqItem, setupSortTable
 from ui_utils.text_dialog import askText
 
-_HANDLE_COL, _SEQ_COL, _NAME_COL, _MODE_COL, _KIND_COL, _EXPR_COL = range(6)
-_HEADERS = ("", "序號", "名稱", "模式", "型態", "範圍")
+_HANDLE_COL, _SEQ_COL, _NAME_COL, _MODE_COL, _KIND_COL, _EXPR_COL, _DATE_COL = range(7)
+_HEADERS = ("", "序號", "名稱", "模式", "型態", "範圍", "左側日期")
 _KIND_LABELS = {KIND_NUM: "數字", KIND_ALPHA: "英文", KIND_CJK: "天干"}
 
 SLOTS_PER_ROW = 10
+# 勤休方塊最多直接顯示幾排，超過才在卡片內捲動（維護者裁示：做到 30 格）。
+# 3 排以內照原本作法，卡片往上長、擠壓群組表（3 排時群組表第 6 列會被切到、出現捲軸，
+# 維護者接受）；不設上限的話 50 格群組表只剩一列，80 格以上連視窗都裝不下。
+MAX_VISIBLE_TILE_ROWS = 3
+TILE_H = 60
+TILE_SPACING = 8
 COLOR_READONLY_TEXT = "#8e8e93"
 
 
-def version_label(row, latest_id):
-    """版本的完整文字（無障礙文字與測試用）。"""
-    if row["status"] == ruleset.DRAFT:
-        return f"草稿「{row['draft_name'] or '未命名'}」　{row['created_at'][:10]}"
-    star = "　★ 最新" if row["version_id"] == latest_id else ""
-    return f"v{row['version_no']}　啟用　{(row['activated_at'] or '')[:10]}{star}"
+def template_label(row):
+    """模板的完整文字（無障礙文字與測試用）。"""
+    return f"模板「{row['name']}」　{row['created_at'][:10]} 建立"
 
 
 def kind_label(mode, expr):
@@ -54,33 +58,22 @@ def kind_label(mode, expr):
         return "?"
 
 
-class _VersionItem(QWidget):
-    """版本清單的一筆：左側名稱與日期，右側狀態標籤。"""
+class _TemplateItem(QWidget):
+    """模板清單的一筆：名稱與建立日期。"""
 
-    def __init__(self, row, latest_id, parent=None):
+    def __init__(self, row, parent=None):
         super().__init__(parent)
         lay = QHBoxLayout(self)
         lay.setContentsMargins(12, 8, 12, 8)
         lay.setSpacing(8)
         text = QVBoxLayout()
         text.setSpacing(2)
-        if row["status"] == ruleset.DRAFT:
-            name, sub = row["draft_name"] or "未命名", f"{row['created_at'][:10]} 建立"
-            badge, tone = "草稿", "draft"
-        else:
-            name, sub = f"v{row['version_no']}", f"{(row['activated_at'] or '')[:10]} 啟用"
-            latest = row["version_id"] == latest_id
-            badge, tone = ("啟用・最新", "latest") if latest else ("啟用", "active")
-        self.lbl_name = QLabel(name)
-        self.lbl_name.setObjectName("versionName")
-        self.lbl_sub = cardHint(sub)
+        self.lbl_name = QLabel(row["name"])
+        self.lbl_name.setObjectName("templateName")
+        self.lbl_sub = cardHint(f"{row['created_at'][:10]} 建立")
         text.addWidget(self.lbl_name)
         text.addWidget(self.lbl_sub)
         lay.addLayout(text, 1)
-        self.lbl_badge = QLabel(badge)
-        self.lbl_badge.setObjectName("badge")
-        setTone(self.lbl_badge, tone)
-        lay.addWidget(self.lbl_badge, 0, Qt.AlignVCenter)
 
 
 class SlotTile(QLabel):
@@ -125,7 +118,7 @@ class TabRules(QWidget):
     def __init__(self, db_path, parent=None):
         super().__init__(parent)
         self.db_path = db_path
-        self._versions = []          # Ruleset_Version 列（清單順序）
+        self._templates = []          # Rota_Template 列（清單順序）
         self._groups = []            # [group_id, name, mode, expr]（畫面順序）
         self._slot_seqs = []
         self.slotTiles = []
@@ -147,27 +140,24 @@ class TabRules(QWidget):
         splitter.setHandleWidth(16)
         root.addWidget(splitter)
 
-        # 左：規則版本卡片
-        left = Card("規則版本")
-        self.list_versions = QListWidget()
-        self.list_versions.setObjectName("versionList")
-        self.list_versions.setSpacing(3)
-        left.body.addWidget(self.list_versions, 1)
-        self.btn_new_draft = styleButton(QPushButton("新增草稿"), "normal")
-        self.btn_copy = styleButton(QPushButton("複製為草稿"), "normal")
+        # 左：輪番模板卡片
+        left = Card("輪番模板")
+        self.list_templates = QListWidget()
+        self.list_templates.setObjectName("templateList")
+        self.list_templates.setSpacing(3)
+        left.body.addWidget(self.list_templates, 1)
+        self.btn_new_template = styleButton(QPushButton("新增模板"), "primary")
+        self.btn_copy = styleButton(QPushButton("複製一份"), "normal")
         self.btn_rename = styleButton(QPushButton("改名"), "normal")
-        self.btn_delete_draft = styleButton(QPushButton("刪除草稿"), "danger")
-        self.btn_activate = styleButton(QPushButton("啟用"), "primary")
+        self.btn_delete_template = styleButton(QPushButton("刪除模板"), "danger")
         grid = QGridLayout()
         grid.setHorizontalSpacing(BTN_ROW_SPACING)
         grid.setVerticalSpacing(BTN_ROW_SPACING)
-        grid.addWidget(self.btn_new_draft, 0, 0)
+        grid.addWidget(self.btn_new_template, 0, 0)
         grid.addWidget(self.btn_copy, 0, 1)
         grid.addWidget(self.btn_rename, 1, 0)
-        grid.addWidget(self.btn_delete_draft, 1, 1)
+        grid.addWidget(self.btn_delete_template, 1, 1)
         left.body.addLayout(grid)
-        left.body.addSpacing(6)      # 「啟用」是定案動作，與上面的編輯鈕隔開
-        left.body.addWidget(self.btn_activate)
         splitter.addWidget(left)
 
         # 右：提示條＋群組卡片＋槽位卡片
@@ -197,7 +187,8 @@ class TabRules(QWidget):
         tbl.setHorizontalHeaderLabels(_HEADERS)
         self._drag_filter, self._seq_delegate = setupSortTable(tbl, _SEQ_COL, self._moveRow)
         hdr = tbl.horizontalHeader()
-        for col, width in ((_HANDLE_COL, 36), (_SEQ_COL, 64), (_MODE_COL, 90), (_KIND_COL, 80)):
+        for col, width in ((_HANDLE_COL, 36), (_SEQ_COL, 64), (_MODE_COL, 90), (_KIND_COL, 80),
+                           (_DATE_COL, 100)):
             hdr.setSectionResizeMode(col, QHeaderView.Fixed)
             tbl.setColumnWidth(col, width)
         hdr.setSectionResizeMode(_NAME_COL, QHeaderView.Stretch)
@@ -213,22 +204,30 @@ class TabRules(QWidget):
         self.chk_from_one = QCheckBox("輪番群組的番號都由 1 起算")
         self.chk_from_one.setToolTip("勾選：各輪番群組的番號都由 1 起算（番號 21 顯示為 1番）；未勾選：依原番號顯示（21番）")
         with opened(self.db_path) as conn:
-            self.chk_from_one.setChecked(get_setting(conn, KEY_SLOT_NUMBER_FROM_ONE, "1") == "1")
+            # 預設不勾（維護者裁示 2026-09-16）：照原番號顯示
+            self.chk_from_one.setChecked(get_setting(conn, KEY_SLOT_NUMBER_FROM_ONE, "0") == "1")
         self.chk_from_one.toggled.connect(self._onFromOneToggled)
-        self.slots_card.header.addWidget(self.chk_from_one)
-        self.tiles_grid = QGridLayout()
-        self.tiles_grid.setHorizontalSpacing(8)
-        self.tiles_grid.setVerticalSpacing(8)
-        self.slots_card.body.addLayout(self.tiles_grid)
-        self.legend = QHBoxLayout()
-        self.legend.setSpacing(16)
+        # 圖例放在標題列、勾選框左邊，不另佔卡片底下一列——省下的高度讓 3 排方塊
+        # 不必擠壓上面的群組表
         self.legend_chips = {}
-        for text, state in (("上班", "work"), ("輪休", "rest"), ("自訂代碼", "override")):
+        for text, state in (("上班", "work"), ("輪休", "rest"), ("自訂", "override")):
             chip = _legendChip(text, state)
             self.legend_chips[state] = chip
-            self.legend.addWidget(chip)
-        self.legend.addStretch()
-        self.slots_card.body.addLayout(self.legend)
+            self.slots_card.header.addWidget(chip)
+        self.slots_card.header.addSpacing(12)
+        self.slots_card.header.addWidget(self.chk_from_one)
+        tiles_host = QWidget()
+        self.tiles_grid = QGridLayout(tiles_host)
+        self.tiles_grid.setContentsMargins(0, 0, 4, 0)      # 右邊留一點給捲軸，方塊不貼著它
+        self.tiles_grid.setHorizontalSpacing(TILE_SPACING)
+        self.tiles_grid.setVerticalSpacing(TILE_SPACING)
+        self.tiles_grid.setAlignment(Qt.AlignTop)
+        self.tiles_scroll = QScrollArea()
+        self.tiles_scroll.setWidget(tiles_host)
+        self.tiles_scroll.setWidgetResizable(True)
+        self.tiles_scroll.setFrameShape(QFrame.NoFrame)
+        self.tiles_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.slots_card.body.addWidget(self.tiles_scroll)
         self.slots_card.body.addStretch()
         rv.addWidget(self.slots_card, 2)
         splitter.addWidget(right)
@@ -236,12 +235,11 @@ class TabRules(QWidget):
         splitter.setStretchFactor(1, 3)
         splitter.setSizes([380, 1020])
 
-        self.list_versions.currentRowChanged.connect(self._onVersionChanged)
-        self.btn_new_draft.clicked.connect(self._newDraft)
-        self.btn_copy.clicked.connect(self._copyDraft)
-        self.btn_rename.clicked.connect(self._renameDraft)
-        self.btn_delete_draft.clicked.connect(self._deleteDraft)
-        self.btn_activate.clicked.connect(self._activate)
+        self.list_templates.currentRowChanged.connect(self._onVersionChanged)
+        self.btn_new_template.clicked.connect(self._newTemplate)
+        self.btn_copy.clicked.connect(self._copyTemplate)
+        self.btn_rename.clicked.connect(self._renameTemplate)
+        self.btn_delete_template.clicked.connect(self._deleteTemplate)
         self.btn_add_group.clicked.connect(self._addGroup)
         self.btn_edit_group.clicked.connect(lambda: self._editGroup())
         self.btn_delete_group.clicked.connect(self._deleteGroup)
@@ -253,32 +251,25 @@ class TabRules(QWidget):
         tbl.itemSelectionChanged.connect(self._renderSlots)
 
     # ── 狀態 ────────────────────────────────────────────────────
-    def currentVersion(self):
-        row = self.list_versions.currentRow()
-        return self._versions[row] if 0 <= row < len(self._versions) else None
+    def currentTemplate(self):
+        row = self.list_templates.currentRow()
+        return self._templates[row] if 0 <= row < len(self._templates) else None
 
     def _editable(self):
-        v = self.currentVersion()
-        return v is not None and v["status"] == ruleset.DRAFT
+        return self.currentTemplate() is not None
 
     def _applyEditable(self):
-        v = self.currentVersion()
         editable = self._editable()
         for btn in (self.btn_add_group, self.btn_edit_group, self.btn_delete_group,
-                    self.btn_rename, self.btn_delete_draft, self.btn_activate):
+                    self.btn_rename, self.btn_delete_template, self.btn_copy,
+                    self.btn_check):
             btn.setEnabled(editable)
-        self.btn_copy.setEnabled(v is not None)
-        self.btn_check.setEnabled(v is not None)
         self.btn_save.setEnabled(editable and self._dirty)
-        if v is None:
-            self.lbl_state.setText("目前尚無規則版本，請先新增草稿。")
-            setTone(self.lbl_state, "info")
-        elif editable:
-            self.lbl_state.setText("草稿階段可任意修改；在確認無誤後正式啟用，啟用後無法再修改內容。")
-            setTone(self.lbl_state, "info")
+        if not editable:
+            self.lbl_state.setText("目前尚無輪番模板，請先新增模板。")
         else:
-            self.lbl_state.setText("已啟用的版本無法修改內容；如需調整，請複製為草稿後編輯。")
-            setTone(self.lbl_state, "locked")
+            self.lbl_state.setText("模板可隨時修改；修改模板不會影響已經產生的月表。")
+        setTone(self.lbl_state, "info")
 
     def hasUnsavedSort(self):
         return self._dirty
@@ -288,28 +279,26 @@ class TabRules(QWidget):
         self.btn_save.setEnabled(self._editable() and dirty)
 
     # ── 版本清單 ────────────────────────────────────────────────
-    def reload(self, select_version_id=None):
-        if select_version_id is None and self.currentVersion() is not None:
-            select_version_id = self.currentVersion()["version_id"]
+    def reload(self, select_template_id=None):
+        if select_template_id is None and self.currentTemplate() is not None:
+            select_template_id = self.currentTemplate()["template_id"]
         with opened(self.db_path) as conn:
-            self._versions = ruleset.list_versions(conn)
-            latest = ruleset.latest_active(conn)
-        latest_id = latest["version_id"] if latest else None
-        self.list_versions.blockSignals(True)
-        self.list_versions.clear()
+            self._templates = template.list_templates(conn)
+        self.list_templates.blockSignals(True)
+        self.list_templates.clear()
         target = 0
-        for i, row in enumerate(self._versions):
+        for i, row in enumerate(self._templates):
             item = QListWidgetItem()
-            item.setData(Qt.UserRole, version_label(row, latest_id))
-            widget = _VersionItem(row, latest_id)
+            item.setData(Qt.UserRole, template_label(row))
+            widget = _TemplateItem(row)
             item.setSizeHint(QSize(0, widget.sizeHint().height() + 4))
-            self.list_versions.addItem(item)
-            self.list_versions.setItemWidget(item, widget)
-            if row["version_id"] == select_version_id:
+            self.list_templates.addItem(item)
+            self.list_templates.setItemWidget(item, widget)
+            if row["template_id"] == select_template_id:
                 target = i
-        self.list_versions.blockSignals(False)
-        if self._versions:
-            self.list_versions.setCurrentRow(target)
+        self.list_templates.blockSignals(False)
+        if self._templates:
+            self.list_templates.setCurrentRow(target)
         self._onVersionChanged()
 
     def _onVersionChanged(self, *_):
@@ -331,107 +320,81 @@ class TabRules(QWidget):
             return True
         return self.promptUnsaved(context="edit")
 
-    def _newDraft(self):
+    def _newTemplate(self):
         if not self._confirmLeaveOrder():
             return
-        name = self._askName("新增草稿", "草稿名稱：")
+        with opened(self.db_path) as conn:
+            default = template.default_template_name(conn)
+        name = self._askName("新增模板", "模板名稱：", default)
         if name is None:
             return
         try:
             with opened(self.db_path) as conn:
-                row = conn.execute("SELECT ruleset_id FROM Ruleset ORDER BY ruleset_id LIMIT 1").fetchone()
-                if row is None:
-                    rid = conn.execute("INSERT INTO Ruleset(name) VALUES ('輪番規則')").lastrowid
-                else:
-                    rid = row[0]
-                vid = ruleset.create_draft(conn, rid, name)
+                tid = template.create_template(conn, name)
         except Exception as exc:
-            reportError("無法新增草稿", exc, self)
+            reportError("無法新增模板", exc, self)
             return
-        self.reload(vid)
+        self.reload(tid)
 
-    def _copyDraft(self):
-        v = self.currentVersion()
-        if v is None or not self._confirmLeaveOrder():
+    def _copyTemplate(self):
+        t = self.currentTemplate()
+        if t is None or not self._confirmLeaveOrder():
             return
-        default = (f"複製自 v{v['version_no']}" if v["status"] != ruleset.DRAFT
-                   else f"{v['draft_name']} 的複本")
-        name = self._askName("複製為草稿", "新草稿名稱：", default)
+        name = self._askName("複製模板", "新模板名稱：", f"{t['name']} 的複本")
         if name is None:
             return
         try:
             with opened(self.db_path) as conn:
-                vid = ruleset.copy_to_draft(conn, v["version_id"], name)
+                tid = template.copy_template(conn, t["template_id"], name)
         except Exception as exc:
             reportError("無法複製", exc, self)
             return
-        self.reload(vid)
+        self.reload(tid)
 
-    def _renameDraft(self):
-        v = self.currentVersion()
+    def _renameTemplate(self):
+        t = self.currentTemplate()
         if not self._editable():
             return
-        name = self._askName("草稿改名", "草稿名稱：", v["draft_name"] or "")
+        name = self._askName("模板改名", "模板名稱：", t["name"])
         if name is None:
             return
         try:
             with opened(self.db_path) as conn:
-                ruleset.rename_draft(conn, v["version_id"], name)
+                template.rename_template(conn, t["template_id"], name)
         except Exception as exc:
             reportError("無法改名", exc, self)
             return
-        self.reload(v["version_id"])
+        self.reload(t["template_id"])
 
-    def _deleteDraft(self):
-        v = self.currentVersion()
+    def _deleteTemplate(self):
+        t = self.currentTemplate()
         if not self._editable():
             return
-        if not confirmBox("刪除草稿", f"確定刪除草稿「{v['draft_name']}」？",
+        if not confirmBox("刪除模板", f"確定刪除模板「{t['name']}」？",
                           confirm_text="刪除", confirm_danger=True, default_confirm=False,
-                          informative="刪除後無法復原。", parent=self):
+                          informative="刪除後無法復原。已經產生的月表不受影響。",
+                          parent=self):
             return
         try:
             with opened(self.db_path) as conn:
-                ruleset.delete_draft(conn, v["version_id"])
+                template.delete_template(conn, t["template_id"])
         except Exception as exc:
             reportError("無法刪除", exc, self)
             return
         self._setDirty(False)
-        self.list_versions.setCurrentRow(-1)
+        self.list_templates.setCurrentRow(-1)
         self.reload()
-
-    def _activate(self):
-        v = self.currentVersion()
-        if not self._editable() or not self._confirmLeaveOrder():
-            return
-        try:
-            with opened(self.db_path) as conn:
-                ruleset.check_version(conn, v["version_id"])
-                next_no = ruleset.next_version_no(conn)
-        except Exception as exc:
-            reportError("無法啟用", exc, self)
-            return
-        if not confirmBox("啟用規則", f"確定將草稿「{v['draft_name']}」啟用為 v{next_no}？",
-                          confirm_text="啟用", default_confirm=False,
-                          informative="啟用後不能再修改，也不能改回草稿。", parent=self):
-            return
-        try:
-            with opened(self.db_path) as conn:
-                ruleset.activate(conn, v["version_id"])
-        except Exception as exc:
-            reportError("無法啟用", exc, self)
-            return
-        self.reload(v["version_id"])
 
     # ── 群組表 ──────────────────────────────────────────────────
     def _loadGroups(self):
-        v = self.currentVersion()
-        if v is None:
+        t = self.currentTemplate()
+        if t is None:
             self._groups = []
         else:
             with opened(self.db_path) as conn:
-                self._groups = [[r["group_id"], r["name"], r["mode"], r["range_expr"]]
-                                for r in ruleset.group_rows(conn, v["version_id"])]
+                self._groups = [[r["group_id"], r["name"], r["mode"], r["range_expr"],
+                                 bool(r["header_before"])]
+                                for r in template.group_rows(conn, t["template_id"])]
         self._renderGroups()
 
     def _renderGroups(self, select_row=None):
@@ -444,14 +407,15 @@ class TabRules(QWidget):
             tbl.blockSignals(True)
             try:
                 tbl.setRowCount(0)
-                for r, (_gid, name, mode, expr) in enumerate(self._groups):
+                for r, (_gid, name, mode, expr, header) in enumerate(self._groups):
                     tbl.insertRow(r)
                     tbl.setItem(r, _HANDLE_COL, makeHandleItem())
                     tbl.setItem(r, _SEQ_COL, makeSeqItem(r + 1, color))
                     tbl.setItem(r, _NAME_COL, makeItem(name, color))
-                    tbl.setItem(r, _MODE_COL, makeItem(ruleset.MODE_LABELS.get(mode, mode), color))
+                    tbl.setItem(r, _MODE_COL, makeItem(template.MODE_LABELS.get(mode, mode), color))
                     tbl.setItem(r, _KIND_COL, makeItem(kind_label(mode, expr), color))
                     tbl.setItem(r, _EXPR_COL, makeItem(expr, color))
+                    tbl.setItem(r, _DATE_COL, makeItem("有" if header else "無", color))
             finally:
                 tbl.blockSignals(False)
 
@@ -501,7 +465,7 @@ class TabRules(QWidget):
             return False
         try:
             with opened(self.db_path) as conn:
-                ruleset.save_group_order(conn, [g[0] for g in self._groups])
+                template.save_group_order(conn, [g[0] for g in self._groups])
         except Exception as exc:
             reportError("儲存失敗", exc, self)
             return False
@@ -523,7 +487,7 @@ class TabRules(QWidget):
 
     def _groupRowData(self, group_id):
         with opened(self.db_path) as conn:
-            return conn.execute("SELECT * FROM RV_Group WHERE group_id = ?", (group_id,)).fetchone()
+            return conn.execute("SELECT * FROM T_Group WHERE group_id = ?", (group_id,)).fetchone()
 
     def _reloadGroupsPreservingOrder(self, select_group_id=None):
         old_order = [g[0] for g in self._groups]
@@ -537,10 +501,10 @@ class TabRules(QWidget):
         self._applyEditable()
 
     def _addGroup(self):
-        v = self.currentVersion()
+        t = self.currentTemplate()
         if not self._editable():
             return
-        dlg = GroupDialog(self.db_path, v["version_id"], parent=self)
+        dlg = GroupDialog(self.db_path, t["template_id"], parent=self)
         if dlg.exec():
             self._reloadGroupsPreservingOrder(dlg.group_id)
 
@@ -552,9 +516,9 @@ class TabRules(QWidget):
         if row < 0:
             msgWarning("請選擇群組", "請先點選要修改的群組", self)
             return
-        v = self.currentVersion()
+        t = self.currentTemplate()
         gid = self._groups[row][0]
-        dlg = GroupDialog(self.db_path, v["version_id"], existing=self._groupRowData(gid), parent=self)
+        dlg = GroupDialog(self.db_path, t["template_id"], existing=self._groupRowData(gid), parent=self)
         if dlg.exec():
             self._reloadGroupsPreservingOrder(gid)
 
@@ -572,19 +536,19 @@ class TabRules(QWidget):
             return
         try:
             with opened(self.db_path) as conn:
-                ruleset.delete_group(conn, gid)
+                template.delete_group(conn, gid)
         except Exception as exc:
             reportError("無法刪除", exc, self)
             return
         self._reloadGroupsPreservingOrder()
 
     def _check(self):
-        v = self.currentVersion()
-        if v is None:
+        t = self.currentTemplate()
+        if t is None:
             return
         try:
             with opened(self.db_path) as conn:
-                ruleset.check_version(conn, v["version_id"])
+                template.check_template(conn, t["template_id"])
         except Exception as exc:
             reportError("規則有問題", exc, self)
             return
@@ -615,11 +579,11 @@ class TabRules(QWidget):
             self._showLegend(())
             self.lbl_slot_hint.setText("")
             return
-        gid, name, mode, expr = group
+        gid, name, mode, expr, _header = group
         with opened(self.db_path) as conn:
-            slots = ruleset.slot_rows(conn, gid)
+            slots = template.slot_rows(conn, gid)
         try:
-            codes = ruleset.expand_codes(mode, expr)
+            codes = template.expand_codes(mode, expr)
         except RangeError:
             codes = ()
         editable = self._editable()
@@ -643,25 +607,27 @@ class TabRules(QWidget):
                 tile.setToolTip(f"自訂代碼（預設為 {default}）")
             tile.clicked.connect(self._onSlotClicked)
             tile.doubleClicked.connect(self._onSlotDoubleClicked)
+            tile.setFixedHeight(TILE_H)
             self.tiles_grid.addWidget(tile, i // SLOTS_PER_ROW, i % SLOTS_PER_ROW)
             self.slotTiles.append(tile)
             self._slot_seqs.append(s["seq"])
         for col in range(SLOTS_PER_ROW):
             self.tiles_grid.setColumnStretch(col, 1)
+        rows = min(-(-len(slots) // SLOTS_PER_ROW), MAX_VISIBLE_TILE_ROWS)
+        self.tiles_scroll.setFixedHeight(rows * TILE_H + max(rows - 1, 0) * TILE_SPACING)
         self.slots_card.setTitle(f"{name} 勤休設定")
         self.chk_from_one.setVisible(mode == MODE_ROTATE)   # 由 1 起算只作用在輪番類型
         # 圖例只列該群組實際會出現的狀態：輪番三種、固定番沒有輪休、空白欄都沒有
         self._showLegend(
             ("work", "rest", "override") if mode == MODE_ROTATE
             else () if mode == MODE_BLANK else ("work", "override"))
-        if not editable:
-            hint = f"共 {len(slots)} 格・已啟用的版本不能修改"
+        # 不顯示「共 N 格」：群組表的範圍欄已看得出格數，標題列留給群組名稱
+        if not editable or mode == MODE_BLANK:
+            hint = ""
         elif mode == MODE_ROTATE:
-            hint = f"共 {len(slots)} 格・點一下切換輪休，雙擊可自訂代碼"
-        elif mode == MODE_BLANK:
-            hint = f"共 {len(slots)} 欄"
+            hint = "點一下切換輪休，雙擊可自訂代碼"
         else:
-            hint = f"共 {len(slots)} 格・固定番無輪休設定，雙擊可自訂代碼"
+            hint = "固定番無輪休設定，雙擊可自訂代碼"
         self.lbl_slot_hint.setText(hint)
 
     def _showLegend(self, states):
@@ -693,7 +659,7 @@ class TabRules(QWidget):
             return
         try:
             with opened(self.db_path) as conn:
-                ruleset.toggle_rest(conn, group[0], seq)
+                template.toggle_rest(conn, group[0], seq)
         except Exception as exc:
             reportError("無法修改", exc, self)
             return
@@ -706,15 +672,15 @@ class TabRules(QWidget):
         # 取消排隊中的單擊：雙擊只做自訂代碼，不順手切掉輪休
         self._click_timer.stop()
         self._pending_slot = None
-        codes = ruleset.expand_codes(group[2], group[3])
+        codes = template.expand_codes(group[2], group[3])
         with opened(self.db_path) as conn:
-            current = ruleset.slot_rows(conn, group[0])[seq - 1]["code_override"] or codes[seq - 1]
+            current = template.slot_rows(conn, group[0])[seq - 1]["code_override"] or codes[seq - 1]
         code, ok = askText(
             self, "自訂代碼", f"第 {seq} 格代碼（預設 {codes[seq - 1]}，清空即回復預設）：", current)
         if ok:
             try:
                 with opened(self.db_path) as conn:
-                    ruleset.set_code_override(conn, group[0], seq, code)
+                    template.set_code_override(conn, group[0], seq, code)
             except Exception as exc:
                 reportError("無法修改", exc, self)
         self._renderSlots()

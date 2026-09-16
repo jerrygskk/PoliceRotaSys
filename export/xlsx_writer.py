@@ -261,28 +261,14 @@ def _setup_page(ws: Worksheet, sheet: Sheet) -> None:
 
 
 def _write_note(ws: Worksheet, first: int, block: Block) -> None:
-    """區塊註記：跨該區塊所有欄的合併格，逐行不同顏色。
+    """區塊註記：跨該區塊所有欄的合併格，一行一筆純文字（一律黑字）。
 
-    ⚠️ openpyxl 一個儲存格只能有一種字型，**做不到一格內多色**。紙本上那段
-    班別說明是逐行不同色的，所以在 xlsx 走 RichText（``CellRichText``），
-    才能照抄顏色。
+    ⚠️ 註記不再帶顏色（維護者裁示 2026-09-16），所以也不必再走 RichText——
+    openpyxl 一格只能一種字型，原本為了逐行上色才拆成 ``CellRichText``。
     """
-    from openpyxl.cell.rich_text import CellRichText, TextBlock
-    from openpyxl.cell.text import InlineFont
-
     last = first + len(block.columns) - 1
-    parts = []
-    for i, line in enumerate(block.note):
-        text = line.text if i == len(block.note) - 1 else line.text + "\n"
-        parts.append(
-            TextBlock(
-                InlineFont(
-                    rFont=FONT_NAME, sz=NOTE_FONT_SIZE, color=_argb(line.color)
-                ),
-                text,
-            )
-        )
-    cell = ws.cell(row=ROW_NAME, column=first, value=CellRichText(*parts))
+    cell = ws.cell(row=ROW_NAME, column=first, value="\n".join(block.note))
+    cell.font = Font(name=FONT_NAME, size=NOTE_FONT_SIZE)
     cell.alignment = _NOTE
     cell.border = _BORDER
     if last > first:

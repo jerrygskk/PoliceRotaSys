@@ -25,6 +25,7 @@ from PySide6.QtGui import (
 )
 
 from lib.layout_model import (
+    BLACK,
     BLUE,
     COL_BLANK,
     COL_MEMBER,
@@ -218,7 +219,7 @@ def _paint(painter: QPainter, page: QRectF, sheet: Sheet) -> None:
 
 
 def _paint_note(painter: QPainter, rect: QRectF, note, body_px: float) -> None:
-    """區塊註記：跨整個區塊的合併格，逐行不同顏色（照紙本）。"""
+    """區塊註記：跨整個區塊的合併格，一行一筆純文字（一律黑字）。"""
     painter.setPen(_border_pen())
     painter.drawRect(rect)
     if not note:
@@ -229,7 +230,7 @@ def _paint_note(painter: QPainter, rect: QRectF, note, body_px: float) -> None:
     # ⚠️ 字級要依**最長那一行**縮，只看行高會讓長行右邊被切掉
     # （「晚班:(1-5、16)」的收尾括號就這樣不見過）。
     size = min(body_px, line_h * 0.62)
-    longest = max(note, key=lambda line: len(line.text)).text
+    longest = max(note, key=len)
     while size > 4:
         painter.setFont(_font(size))
         if painter.fontMetrics().horizontalAdvance(longest) <= usable:
@@ -237,8 +238,8 @@ def _paint_note(painter: QPainter, rect: QRectF, note, body_px: float) -> None:
         size -= 0.5
     painter.setFont(_font(size))
 
+    painter.setPen(_qcolor(BLACK))
     for index, line in enumerate(note):
-        painter.setPen(_qcolor(line.color))
         painter.drawText(
             QRectF(
                 rect.left() + rect.width() * 0.04,
@@ -247,7 +248,7 @@ def _paint_note(painter: QPainter, rect: QRectF, note, body_px: float) -> None:
                 line_h,
             ),
             int(Qt.AlignLeft | Qt.AlignVCenter),
-            line.text,
+            line,
         )
 
 

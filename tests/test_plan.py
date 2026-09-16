@@ -1,13 +1,15 @@
-"""lib/plan.py：月計畫的建立、接續、組版。⚠️ 姓名一律虛構。
+"""lib/plan.py：月表的建立、接續、組版。⚠️ 姓名一律虛構。
 
-最要緊的是 TestChaining——維護者定下的兩條產生原則全在這裡：
-番號沒動就接上月底，番號動了就從 1 日重來；規則換版強制走重設。
+兩個重點：
+
+  TestChaining     接續上月的番號不可亂跳
+  TestSnapshot     月表產生後與設定區脫勾——改模板、改名字、刪人都不影響它
 """
 import tempfile
 import unittest
 from pathlib import Path
 
-from lib import db_schema, db_seed, db_utils, plan, ruleset
+from lib import db_schema, db_seed, db_utils, plan, template
 from lib.rota import slot_on_day
 
 UNIT = "○○分局○○派出所"
@@ -27,16 +29,12 @@ class _PlanTestCase(unittest.TestCase):
         self.conn = db_utils.connect(str(Path(self._temp.name) / "t.db"))
         db_schema.create_all(self.conn)
         db_seed.seed_all(self.conn)
-        self.ruleset_id = self.conn.execute(
-            "SELECT ruleset_id FROM Ruleset"
+        self.tpl = self.conn.execute(
+            "SELECT template_id FROM Rota_Template"
         ).fetchone()[0]
-        self.version = self.conn.execute(
-            "SELECT version_id FROM Ruleset_Version WHERE status = '草稿'"
-        ).fetchone()[0]
-        ruleset.activate(self.conn, self.version)
         rows = self.conn.execute(
-            "SELECT group_id, name FROM RV_Group WHERE version_id = ? "
-            "ORDER BY sort_order", (self.version,)
+            "SELECT group_id, name FROM T_Group WHERE template_id = ? "
+            "ORDER BY sort_order", (self.tpl,)
         ).fetchall()
         self.gid = {r["name"]: r["group_id"] for r in rows}
         self.members = [
@@ -63,28 +61,28 @@ class _PlanTestCase(unittest.TestCase):
     # 舊名保留，內容改為配滿。
     rotate_seeds = full_seeds
 
-    def make_plan(self, year=2026, month=10, origin=plan.ORIGIN_RESET, seeds=None):
+    def make_plan(self, year=2026, month=10, seeds=None):
         return plan.create_plan(
-            self.conn, year, month, self.version, origin,
+            self.conn, year, month, self.tpl,
             seeds if seeds is not None else self.rotate_seeds(),
         )
 
+    def rotate_of(self, year, month):
+        """某月快照裡大輪番那一組的起始格位，依姓名。"""
+        snapshot = plan.load_snapshot(self.conn, year, month)
+        group = next(g for g in snapshot["groups"] if g["name"] == "大輪番")
+        return {m["name"]: m["slot_seq"] for m in group["members"]}
+
 
 class TestCreatePlan(_PlanTestCase):
-    def test_plan_and_seeds_are_written(self):
-        plan_id = self.make_plan()
-        self.assertEqual(
-            len(plan.load_seeds(self.conn, plan_id)[self.gid["大輪番"]]), 20
-        )
+    def test_plan_and_members_are_written(self):
+        self.make_plan()
+        self.assertEqual(len(self.rotate_of(2026, 10)), 20)
 
     def test_duplicate_month_is_refused(self):
         self.make_plan()
         with self.assertRaisesRegex(plan.PlanError, "已經有月表"):
             self.make_plan()
-
-    def test_unknown_origin_is_refused(self):
-        with self.assertRaisesRegex(plan.PlanError, "未知的來源"):
-            self.make_plan(origin="whatever")
 
     def test_empty_seeds_are_refused(self):
         with self.assertRaisesRegex(plan.PlanError, "沒有任何配對"):
@@ -117,14 +115,12 @@ class TestCreatePlan(_PlanTestCase):
         with self.assertRaisesRegex(plan.PlanError, "第 3 格"):
             self.make_plan(seeds=short)
 
-    def test_group_from_another_version_is_refused(self):
-        other = ruleset.copy_to_draft(self.conn, self.version, "另一版")
-        other_gid = self.conn.execute(
-            "SELECT group_id FROM RV_Group WHERE version_id = ? LIMIT 1", (other,)
-        ).fetchone()[0]
+    def test_group_from_another_template_is_refused(self):
+        other = template.copy_template(self.conn, self.tpl, "另一份")
+        other_gid = template.group_rows(self.conn, other)[0]["group_id"]
         bad = self.full_seeds()
         bad[other_gid] = {self.members[0]: 1}
-        with self.assertRaisesRegex(plan.PlanError, "不屬於這一版"):
+        with self.assertRaisesRegex(plan.PlanError, "不屬於這份模板"):
             self.make_plan(seeds=bad)
 
     def test_delete_then_recreate(self):
@@ -139,87 +135,112 @@ class TestCreatePlan(_PlanTestCase):
 
 class TestChaining(_PlanTestCase):
     def test_no_previous_month_blocks_chaining(self):
-        reason = plan.chain_blocked_reason(self.conn, 2026, 10, self.version)
+        reason = plan.chain_blocked_reason(self.conn, 2026, 10)
         self.assertIn("沒有月表可以接續", reason)
 
-    def test_chaining_works_when_nothing_changed(self):
+    def test_chaining_works_once_last_month_exists(self):
         self.make_plan(2026, 10)
-        self.assertTrue(plan.can_chain(self.conn, 2026, 11, self.version))
+        self.assertTrue(plan.can_chain(self.conn, 2026, 11))
 
     def test_chained_seeds_are_continuous_across_the_boundary(self):
         """⚠️ 10/31 的下一格必須就是 11/1——番號不可亂跳。"""
         self.make_plan(2026, 10)
-        groups = {g.name: g for g in ruleset.load_groups(self.conn, self.version)}
-        group = groups["大輪番"]
-        before = plan.load_seeds(self.conn, plan.get_plan(self.conn, 2026, 10)["plan_id"])
-        after = plan.chained_seeds(self.conn, 2026, 11, self.version)
-        for member, seq in before[self.gid["大輪番"]].items():
+        group = {g.name: g for g in template.load_groups(self.conn, self.tpl)}["大輪番"]
+        before = self.rotate_of(2026, 10)
+        plan.create_chained_plan(self.conn, 2026, 11)
+        after = self.rotate_of(2026, 11)
+        for name, seq in before.items():
             last = slot_on_day(group, seq, 31)
-            first = slot_on_day(group, after[self.gid["大輪番"]][member], 1)
+            first = slot_on_day(group, after[name], 1)
             self.assertEqual(first.seq, last.seq % group.cycle_len + 1)
 
     def test_january_chains_from_december(self):
         self.make_plan(2026, 12)
-        self.assertTrue(plan.can_chain(self.conn, 2027, 1, self.version))
+        self.assertTrue(plan.can_chain(self.conn, 2027, 1))
 
-    def test_changing_the_version_blocks_chaining(self):
-        """規則換版走重設——這是規則二的正常結果，不是例外處理。"""
+    def test_chaining_carries_last_months_rules_not_the_current_template(self):
+        """⚠️ 接續＝沿用上月那份快照。中途改了模板也不影響已接續的月份。"""
         self.make_plan(2026, 10)
-        second = ruleset.copy_to_draft(self.conn, self.version, "第二版")
-        ruleset.activate(self.conn, second)
-        reason = plan.chain_blocked_reason(self.conn, 2026, 11, second)
-        self.assertIn("規則已換版", reason)
-
-    def test_moving_a_rest_day_blocks_chaining_even_with_the_same_length(self):
-        """格數一樣但休移了位，一樣不能接續。
-
-        ⚠️ 擋下來的是「換了版」而不是「槽位不同」——規則版本啟用後凍結，
-        所以同一版的槽位必然相同，換版才可能不同。兩者在這裡是同一件事。
-        """
-        self.make_plan(2026, 10)
-        second = ruleset.copy_to_draft(self.conn, self.version, "休移位")
-        gid = self.conn.execute(
-            "SELECT group_id FROM RV_Group WHERE version_id = ? AND name = '大輪番'",
-            (second,),
-        ).fetchone()[0]
-        self.conn.execute(
-            "UPDATE RV_Slot SET is_rest = 1 WHERE group_id = ? AND seq = 5", (gid,)
-        )
-        self.conn.execute(
-            "UPDATE RV_Slot SET is_rest = 0 WHERE group_id = ? AND seq = 7", (gid,)
-        )
-        self.conn.commit()
-        ruleset.activate(self.conn, second)
-        reason = plan.chain_blocked_reason(self.conn, 2026, 11, second)
-        self.assertIn("規則已換版", reason)
+        gid = self.gid["大輪番"]
+        template.update_group(self.conn, gid, "大輪番", "rotate", "1-22", True, "")
+        plan.create_chained_plan(self.conn, 2026, 11)
+        snapshot = plan.load_snapshot(self.conn, 2026, 11)
+        group = next(g for g in snapshot["groups"] if g["name"] == "大輪番")
+        self.assertEqual(len(group["slots"]), 20)
 
     def test_chained_seeds_raise_when_blocked(self):
         with self.assertRaises(plan.PlanError):
-            plan.chained_seeds(self.conn, 2026, 10, self.version)
+            plan.chained_snapshot(self.conn, 2026, 10)
 
     def test_fixed_group_seeds_survive_chaining_unchanged(self):
-        seeds = self.full_seeds()
-        self.make_plan(2026, 10, seeds=seeds)
-        after = plan.chained_seeds(self.conn, 2026, 11, self.version)
-        self.assertEqual(after[self.gid["固定番"]], seeds[self.gid["固定番"]])
+        self.make_plan(2026, 10)
+        before = plan.load_snapshot(self.conn, 2026, 10)
+        plan.create_chained_plan(self.conn, 2026, 11)
+        after = plan.load_snapshot(self.conn, 2026, 11)
+
+        def fixed(snapshot):
+            group = next(g for g in snapshot["groups"] if g["name"] == "固定番")
+            return [(m["name"], m["slot_seq"]) for m in group["members"]]
+
+        self.assertEqual(fixed(after), fixed(before))
+
+    def test_origin_records_how_the_month_was_made(self):
+        self.make_plan(2026, 10)
+        plan.create_chained_plan(self.conn, 2026, 11)
+        self.assertEqual(
+            plan.get_plan(self.conn, 2026, 10)["origin"], plan.ORIGIN_CUSTOM
+        )
+        self.assertEqual(
+            plan.get_plan(self.conn, 2026, 11)["origin"], plan.ORIGIN_CHAIN
+        )
 
     def test_a_full_chain_of_months_stays_continuous(self):
         """連產三個月，每次接續，番號不得亂跳。"""
         self.make_plan(2026, 10)
         for year, month in ((2026, 11), (2026, 12)):
-            seeds = plan.chained_seeds(self.conn, year, month, self.version)
-            plan.create_plan(
-                self.conn, year, month, self.version, plan.ORIGIN_CHAIN, seeds
-            )
-        groups = {g.name: g for g in ruleset.load_groups(self.conn, self.version)}
-        group = groups["大輪番"]
-        member = self.members[0]
-        dec = plan.load_seeds(
-            self.conn, plan.get_plan(self.conn, 2026, 12)["plan_id"]
-        )[self.gid["大輪番"]][member]
+            plan.create_chained_plan(self.conn, year, month)
+        group = {g.name: g for g in template.load_groups(self.conn, self.tpl)}["大輪番"]
+        name = db_seed.SEED_MEMBERS[0]
+        dec = self.rotate_of(2026, 12)[name]
         # 10/1 起算到 12/1 共經過 31 + 30 = 61 天
-        expected = (1 - 1 + 61) % group.cycle_len + 1
-        self.assertEqual(dec, expected)
+        self.assertEqual(dec, (1 - 1 + 61) % group.cycle_len + 1)
+
+
+class TestSnapshotIsDetached(_PlanTestCase):
+    """⚠️ 這一類是「脫勾」成不成立的判準——改設定不得讓已產生的月表變樣。"""
+
+    def setUp(self):
+        super().setUp()
+        self.make_plan(2026, 10)
+        self.before = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
+
+    def _unchanged(self):
+        self.assertEqual(plan.build_sheet_for(self.conn, 2026, 10, UNIT), self.before)
+
+    def test_editing_the_template_does_not_change_an_existing_month(self):
+        gid = self.gid["大輪番"]
+        template.toggle_rest(self.conn, gid, 1)
+        template.set_code_override(self.conn, gid, 2, "甲")
+        template.update_group(self.conn, gid, "改名了", "rotate", "1-22", True, "")
+        self._unchanged()
+
+    def test_deleting_the_whole_template_does_not_change_an_existing_month(self):
+        template.delete_template(self.conn, self.tpl)
+        self._unchanged()
+
+    def test_renaming_or_deleting_a_member_does_not_change_an_existing_month(self):
+        self.conn.execute(
+            "UPDATE Member SET name = '改過的' WHERE member_id = ?", (self.members[0],)
+        )
+        self.conn.execute("DELETE FROM Member WHERE member_id = ?", (self.members[1],))
+        self.conn.commit()
+        self._unchanged()
+
+    def test_the_snapshot_stores_names_not_member_ids(self):
+        snapshot = plan.load_snapshot(self.conn, 2026, 10)
+        group = next(g for g in snapshot["groups"] if g["name"] == "大輪番")
+        self.assertEqual(group["members"][0]["name"], db_seed.SEED_MEMBERS[0])
+        self.assertNotIn("member_id", group["members"][0])
 
 
 class TestBuildSheetFor(_PlanTestCase):
@@ -233,18 +254,19 @@ class TestBuildSheetFor(_PlanTestCase):
         names = [b.name for b in sheet.blocks if b.name]
         self.assertEqual(
             names,
-            ["大輪番", "固定番", "同仁專案臨檢", "班別", "幹部", "快打勤務"],
+            ["大輪番", "固定番", "同仁專案臨檢", "劃假", "幹部", "快打勤務"],
         )
 
     def test_blank_groups_need_no_pairing_and_render_empty(self):
         """⚠️ 空白欄不配人，格子全空供手寫。"""
         self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
-        block = block_named(sheet, "班別")
+        block = block_named(sheet, "劃假")
         # 有註記的區塊：小標題移到代碼列，姓名列讓給跨欄的註記合併格。
         self.assertEqual([c.code for c in block.columns], ["早", "中", "晚"])
-        self.assertEqual([line.text for line in block.note][0], "晚班:(1-5、16)")
-        self.assertEqual(block.note[0].color, "blue")
+        # ⚠️ 註記一律純文字、黑字，不帶顏色（維護者裁示 2026-09-16）
+        self.assertEqual(block.note[0], "晚班:(1-5、16)")
+        self.assertTrue(all(isinstance(line, str) for line in block.note))
         for column in block.columns:
             self.assertTrue(all(cell.text == "" for cell in column.cells))
 

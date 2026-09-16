@@ -61,9 +61,9 @@ def friendlyErrorMessage(exc):
     import sqlite3
     from lib.plan import PlanError
     from lib.rota import GroupError, RangeError
-    from lib.ruleset import RulesetError
+    from lib.template import TemplateError
 
-    if isinstance(exc, (RulesetError, PlanError, RangeError, GroupError)):
+    if isinstance(exc, (TemplateError, PlanError, RangeError, GroupError)):
         return str(exc)
     if isinstance(exc, sqlite3.DatabaseError):
         return "資料庫存取失敗，操作未完成。詳細內容已記錄在 error.log。"
