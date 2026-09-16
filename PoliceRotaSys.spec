@@ -16,7 +16,10 @@ a = Analysis(
     ["main.py"],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[
+        ("res/buttons/police_badge.svg", "res/buttons"),
+        ("res/buttons/banner.png", "res/buttons"),
+    ],
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],
@@ -39,4 +42,5 @@ exe = EXE(
     upx=False,
     console=False,
     version="version_info.txt",
+    icon=["res\\buttons\\police_badge.ico"],
 )

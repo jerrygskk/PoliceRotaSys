@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="340" height="340" viewBox="0 0 340 340" role="img" aria-label="Police rota duty cycle icon">
+  <defs>
+    <linearGradient id="tileC" x1="25" y1="20" x2="316" y2="325" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#224E7A"/>
+      <stop offset="1" stop-color="#102A48"/>
+    </linearGradient>
+    <filter id="shadowC" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#07192B" flood-opacity=".35"/>
+    </filter>
+  </defs>
+
+  <!-- Transparent outside the app tile. -->
+  <rect x="10" y="10" width="320" height="320" rx="72" fill="url(#tileC)"/>
+  <circle cx="170" cy="160" r="133" fill="#82ACCA" opacity=".08"/>
+
+  <!-- Shield outline frames the rota without imitating an official badge. -->
+  <path d="M170 54c27 19 58 31 90 35v78c0 62-35 109-90 133-55-24-90-71-90-133V89c32-4 63-16 90-35z" fill="#F7FBFE" filter="url(#shadowC)"/>
+  <path d="M170 72c22 15 46 25 72 30v64c0 49-27 88-72 110-45-22-72-61-72-110v-64c26-5 50-15 72-30z" fill="none" stroke="#8BADC4" stroke-width="5"/>
+
+  <!-- Four-segment rota ring: amber shift, sky day, navy night, pale rest. -->
+  <path d="M170 102a65 65 0 0 1 65 65h-23a42 42 0 0 0-42-42z" fill="#F2B84B"/>
+  <path d="M235 167a65 65 0 0 1-65 65v-23a42 42 0 0 0 42-42z" fill="#71A7C8"/>
+  <path d="M170 232a65 65 0 0 1-65-65h23a42 42 0 0 0 42 42z" fill="#173B67"/>
+  <path d="M105 167a65 65 0 0 1 65-65v23a42 42 0 0 0-42 42z" fill="#C9DCE9"/>
+  <circle cx="170" cy="167" r="36" fill="#FFFFFF"/>
+
+  <!-- One strong person/check-in silhouette remains legible when reduced. -->
+  <circle cx="170" cy="153" r="11" fill="#173B67"/>
+  <path d="M148 190c2-16 10-25 22-25s20 9 22 25z" fill="#173B67"/>
+
+  <!-- Minimal sun and moon cues; deliberately omitted at the other quadrants. -->
+  <circle cx="203" cy="133" r="7" fill="#FFF8E7"/>
+  <path d="M137 203a10 10 0 1 0 9-16 12 12 0 0 1-9 16z" fill="#FFFFFF"/>
+</svg>

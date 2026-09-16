@@ -164,7 +164,7 @@ class TestMainWindow(_TempDb):
     def test_maintenance_is_the_last_tab(self):
         win = main.MainWindow(self.db)
         self.addCleanup(win.deleteLater)
-        self.assertEqual(win.tabs.tabText(win.tabs.count() - 1), "維護")
+        self.assertEqual(win.tabs.tabText(win.tabs.count() - 1), "功能維護")
 
 
 if __name__ == "__main__":

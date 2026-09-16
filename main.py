@@ -10,11 +10,13 @@ import logging
 import os
 import sys
 
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget
 
 from lib import db_backup, db_schema, db_seed
 from lib.db_utils import KEY_BACKUP_SECOND_DIR, get_setting, opened
+from lib.loading_screen import LoadingScreen
+from lib.resource_path import resource_path
 from lib.theme import APPLE_STYLE
 from lib.version import __version__
 from lib.window_geometry import apply_startup_geometry
@@ -80,11 +82,14 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.db_path = db_path
         self.setWindowTitle(f"{APP_NAME} v{__version__}")
+        app = QApplication.instance()
+        if app is not None and not app.windowIcon().isNull():
+            self.setWindowIcon(app.windowIcon())
         # 預設尺寸照 PoliceDocSys 主視窗（Layout1.ui 的 1440x780）
         self.resize(1440, 780)
 
         self.tabs = QTabWidget()
-        # 分頁順序照使用頻率（DEVELOPER §4）：產生月表／輪番設定／人員設定／維護
+        # 分頁順序照使用頻率（DEVELOPER §4）：產生月表／輪番設定／人員設定／功能維護
         self.tab_generate = TabGenerate(db_path)
         self.tabs.addTab(self.tab_generate, "產生月表")
         self.tab_rules = TabRules(db_path)
@@ -92,7 +97,7 @@ class MainWindow(QMainWindow):
         self.tab_personnel = TabPersonnel(db_path)
         self.tabs.addTab(self.tab_personnel, "人員設定")
         self.tab_maintenance = TabMaintenance(db_path)
-        self.tabs.addTab(self.tab_maintenance, "維護")
+        self.tabs.addTab(self.tab_maintenance, "功能維護")
         self.setCentralWidget(self.tabs)
 
     def closeEvent(self, event):
@@ -107,20 +112,46 @@ def main():
     setup_logging(os.path.join(os.path.dirname(db_path), LOG_NAME))
 
     app = QApplication(sys.argv)
+    icon_path = resource_path("res/buttons/police_badge.svg")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
     installDateEditInputGuard(app)
     app.setFont(QFont("Microsoft JhengHei", 14))
     app.setStyleSheet(APPLE_STYLE)
 
+    loading = LoadingScreen(product_name=APP_NAME)
+    loading.show()
+    loading.raise_()
+    loading.activateWindow()
+    app.processEvents()
+
+    def update_loading(desc, percent):
+        app.processEvents()
+        loading.setStep(desc, percent)
+        app.processEvents()
+
+    update_loading("檢查資料庫...", 10)
     if not database_is_healthy(db_path):
+        loading.finishAndClose()
+        app.processEvents()
         msgCritical("資料庫需要修復", CORRUPT_MESSAGE)
         return 1
+
+    update_loading("準備資料庫...", 35)
     prepare_database(db_path)
+
+    update_loading("備份資料庫...", 60)
     run_auto_backup(db_path)
 
+    update_loading("建立操作介面...", 80)
     win = MainWindow(db_path)
     # 開窗前依「實際可用桌面範圍」（已扣工作列）收斂尺寸／位置，避免縮放倍率、
     # 解析度或投影機造成視窗一開就超出畫面；沒超出則不動（PoliceDocSys 同一做法）
     apply_startup_geometry(win, QApplication.primaryScreen())
+
+    update_loading("啟動完成", 100)
+    loading.finishAndClose()
+    app.processEvents()
     win.show()
     return app.exec()
 
