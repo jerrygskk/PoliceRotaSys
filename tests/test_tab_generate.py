@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QApplication
 
 import main
 from lib import plan
-from lib.db_utils import opened
+from lib.db_utils import KEY_OUTPUT_DIR, get_setting, opened, set_setting
 from tabs import tab_generate
 from tabs.tab_generate import TabGenerate, defaultYearMonth
 from ui_utils import pairing_dialog
@@ -96,17 +96,140 @@ class TestTabGenerate(_TempDb):
         self.tab._chain()
         self.assertTrue(self.has_plan(2026, 11))
 
-    def test_generated_month_blocks_both_entry_points(self):
-        """⚠️ 已產生的月份：兩顆鈕不反灰，每個進入點都自己擋。"""
+    # ── 已產生的月份：軟擋（維護者裁示），確認後覆蓋 ──
+    def _make_october(self):
         tpl, seeds = self.full_seeds()
         with opened(self.db) as conn:
             plan.create_plan(conn, 2026, 10, tpl, seeds)
-        with mock.patch.object(tab_generate, "msgWarning") as warn, \
+        return tpl, seeds
+
+    def test_cancelling_the_overwrite_changes_nothing(self):
+        self._make_october()
+        with mock.patch.object(tab_generate, "confirmBox", return_value=False) as ask, \
              mock.patch.object(tab_generate, "PairingDialog") as dlg:
             self.tab._custom()
-            self.tab._chain()
+        ask.assert_called_once()
         dlg.assert_not_called()
-        self.assertEqual(warn.call_count, 2)
+
+    def test_custom_overwrite_opens_the_dialog_with_the_existing_pairing(self):
+        tpl, seeds = self._make_october()
+        fake = mock.MagicMock(template_id=tpl, seeds=seeds)
+        fake.exec.return_value = True
+        with mock.patch.object(tab_generate, "confirmBox", return_value=True), \
+             mock.patch.object(tab_generate, "PairingDialog", return_value=fake) as dlg:
+            self.tab._custom()
+        self.assertTrue(dlg.call_args.kwargs["edit_existing"])
+        with opened(self.db) as conn:
+            self.assertEqual(len(plan.list_plans(conn)), 1)
+
+    def test_chain_overwrite_after_confirm(self):
+        tpl, seeds = self._make_october()
+        with opened(self.db) as conn:
+            plan.create_plan(conn, 2026, 11, tpl, seeds)       # 11 月先自訂一份
+        self.tab.cmb_month.setCurrentIndex(10)
+        with mock.patch.object(tab_generate, "confirmBox", return_value=True):
+            self.tab._chain()
+        with opened(self.db) as conn:
+            self.assertEqual(plan.get_plan(conn, 2026, 11)["origin"], plan.ORIGIN_CHAIN)
+
+    def test_past_month_confirmation_mentions_it(self):
+        self._make_october()
+        tab = TabGenerate(self.db, today=date(2026, 11, 5))
+        self.addCleanup(tab.deleteLater)
+        tab.cmb_month.setCurrentIndex(9)                      # 10 月已經過去
+        with mock.patch.object(tab_generate, "confirmBox", return_value=False) as ask:
+            tab._custom()
+        self.assertIn("此為歷史勤休表", ask.call_args.kwargs["informative"])
+
+    def test_current_month_confirmation_has_no_past_note(self):
+        self._make_october()
+        with mock.patch.object(tab_generate, "confirmBox", return_value=False) as ask:
+            self.tab._custom()
+        self.assertNotIn("歷史勤休表", ask.call_args.kwargs["informative"])
+
+    # ── 刪除 ──
+    def test_delete_asks_then_removes(self):
+        self._make_october()
+        with mock.patch.object(tab_generate, "confirmBox", return_value=False):
+            self.tab._delete()
+        self.assertTrue(self.has_plan(2026, 10))
+        with mock.patch.object(tab_generate, "confirmBox", return_value=True):
+            self.tab._delete()
+        self.assertFalse(self.has_plan(2026, 10))
+        self.assertFalse(self.tab.preview.hasSheet())
+
+    def test_delete_without_a_plan_warns(self):
+        with mock.patch.object(tab_generate, "msgWarning") as warn, \
+             mock.patch.object(tab_generate, "confirmBox") as ask:
+            self.tab._delete()
+        warn.assert_called_once()
+        ask.assert_not_called()
+
+    # ── 匯出 ──
+    def test_export_path_is_not_broken_across_lines(self):
+        """路徑中間不給斷行（WORD JOINER），去掉之後內容不變。"""
+        path = r"D:\派出所\勤休表"
+        joined = tab_generate.unbreakablePath(path)
+        self.assertEqual(joined.replace("\u2060", ""), path)
+        self.assertEqual(joined.count("\u2060"), len(path) - 1)
+
+    def test_export_file_names_use_roc_year(self):
+        self.assertEqual(tab_generate.exportFileNames(2026, 10),
+                         ("115年10月輪番表.xlsx", "115年10月輪番表.pdf"))
+
+    def test_export_writes_both_files_to_the_remembered_folder(self):
+        self._make_october()
+        folder = tempfile.mkdtemp()
+        with opened(self.db) as conn:
+            set_setting(conn, KEY_OUTPUT_DIR, folder)
+        with mock.patch.object(tab_generate, "msgInfo"), \
+             mock.patch.object(tab_generate, "QFileDialog") as picker:
+            self.tab._export()
+        picker.getExistingDirectory.assert_not_called()
+        self.assertEqual(sorted(os.listdir(folder)),
+                         ["115年10月輪番表.pdf", "115年10月輪番表.xlsx"])
+
+    def test_export_asks_for_a_folder_the_first_time_and_remembers_it(self):
+        self._make_october()
+        folder = tempfile.mkdtemp()
+        with mock.patch.object(tab_generate, "msgInfo"), \
+             mock.patch.object(tab_generate.QFileDialog, "getExistingDirectory",
+                               return_value=folder):
+            self.tab._export()
+        with opened(self.db) as conn:
+            self.assertEqual(get_setting(conn, KEY_OUTPUT_DIR), folder)
+
+    def test_export_asks_before_overwriting_existing_files(self):
+        self._make_october()
+        folder = tempfile.mkdtemp()
+        with opened(self.db) as conn:
+            set_setting(conn, KEY_OUTPUT_DIR, folder)
+        open(os.path.join(folder, "115年10月輪番表.xlsx"), "w").close()
+        with mock.patch.object(tab_generate, "confirmBox", return_value=False) as ask, \
+             mock.patch.object(tab_generate, "msgInfo") as done:
+            self.tab._export()
+        ask.assert_called_once()
+        done.assert_not_called()
+        self.assertEqual(os.path.getsize(os.path.join(folder, "115年10月輪番表.xlsx")), 0)
+
+    def test_export_locked_file_gives_a_plain_message(self):
+        """Excel 開著同名檔時 Windows 不讓覆寫：給看得懂的提示，不丟英文原文。"""
+        self._make_october()
+        folder = tempfile.mkdtemp()
+        with opened(self.db) as conn:
+            set_setting(conn, KEY_OUTPUT_DIR, folder)
+        with mock.patch.object(tab_generate.xlsx_writer, "write_sheet",
+                               side_effect=PermissionError("locked")), \
+             mock.patch.object(tab_generate, "msgWarning") as warn:
+            self.tab._export()
+        self.assertIn("Excel", warn.call_args[0][1])
+
+    def test_export_without_a_plan_warns(self):
+        with mock.patch.object(tab_generate, "msgWarning") as warn, \
+             mock.patch.object(tab_generate, "QFileDialog") as picker:
+            self.tab._export()
+        warn.assert_called_once()
+        picker.getExistingDirectory.assert_not_called()
 
     def _wheel(self, widget, notches):
         vp = widget.viewport()
@@ -197,6 +320,16 @@ class TestPairingDialog(_TempDb):
     def test_no_sequential_fill_button(self):
         """「自動連號填入」已拿掉（維護者裁示 2026-09-16）。"""
         self.assertFalse(hasattr(self.dlg, "btn_sequential"))
+
+    def test_editing_an_existing_month_prefills_its_pairing(self):
+        tpl, seeds = self.full_seeds()
+        with opened(self.db) as conn:
+            plan.create_plan(conn, 2026, 10, tpl, seeds)
+        dlg = PairingDialog(self.db, 2026, 10, edit_existing=True)
+        self.addCleanup(dlg.deleteLater)
+        self.assertEqual(sum(mid is not None for mid in dlg._assign), 34)
+        dlg._submit()
+        self.assertEqual(dlg.seeds, seeds)
 
     def test_rows_cover_every_pairable_slot(self):
         self.assertEqual(len(self.dlg._rows), 34)     # 20 + 8 + 6，空白欄不配人

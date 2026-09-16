@@ -67,6 +67,15 @@ class TestGroupDialog(_TempDb):
         dlg.w_name.insert("一二三四五六七八九")
         self.assertEqual(dlg.w_name.text(), "一二三四五六七")
 
+    def test_reverse_order_checkbox_saves(self):
+        big = self.groups()[0]
+        dlg = GroupDialog(self.db, self.tpl, existing=big)
+        self.addCleanup(dlg.deleteLater)
+        self.assertFalse(dlg.w_reverse.isChecked())
+        dlg.w_reverse.setChecked(True)
+        dlg._submit()
+        self.assertEqual(self.groups()[0]["reverse_order"], 1)
+
     def test_bad_range_shows_inline_error_without_popup(self):
         dlg = GroupDialog(self.db, self.tpl)
         self.addCleanup(dlg.deleteLater)

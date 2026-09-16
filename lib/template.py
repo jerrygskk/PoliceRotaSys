@@ -105,11 +105,11 @@ def copy_template(conn: sqlite3.Connection, template_id: int, name: str) -> int:
     for group in group_rows(conn, template_id):
         cur = conn.execute(
             "INSERT INTO T_Group(template_id, name, mode, range_expr, "
-            "header_before, note, col_weight, sort_order) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "header_before, reverse_order, note, col_weight, sort_order) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 new_id, group["name"], group["mode"], group["range_expr"],
-                group["header_before"], group["note"],
+                group["header_before"], group["reverse_order"], group["note"],
                 group["col_weight"], group["sort_order"],
             ),
         )
@@ -257,7 +257,7 @@ def _assert_unique_name(
 
 def add_group(
     conn: sqlite3.Connection, template_id: int, name: str, mode: str, expr: str,
-    header_before: bool = True, note: str = "",
+    header_before: bool = True, note: str = "", reverse_order: bool = False,
 ) -> int:
     """新增群組並展開槽位，排到最後。"""
     get_template(conn, template_id)
@@ -271,8 +271,8 @@ def add_group(
     ).fetchone()
     cur = conn.execute(
         "INSERT INTO T_Group(template_id, name, mode, range_expr, header_before, "
-        "note, col_weight, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (template_id, name, mode, expr, int(header_before), note,
+        "reverse_order, note, col_weight, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (template_id, name, mode, expr, int(header_before), int(reverse_order), note,
          WEIGHT_BY_MODE[mode], (row["m"] or 0) + 1),
     )
     group_id = cur.lastrowid
@@ -283,7 +283,7 @@ def add_group(
 
 def update_group(
     conn: sqlite3.Connection, group_id: int, name: str, mode: str, expr: str,
-    header_before: bool, note: str,
+    header_before: bool, note: str, reverse_order: bool = False,
 ) -> bool:
     """修改群組。模式或範圍有變時重新展開槽位並回傳 True（休與自訂代碼已清空）。"""
     old = _group_row(conn, group_id)
@@ -295,8 +295,8 @@ def update_group(
     weight = WEIGHT_BY_MODE[mode] if mode != old["mode"] else old["col_weight"]
     conn.execute(
         "UPDATE T_Group SET name = ?, mode = ?, range_expr = ?, header_before = ?, "
-        "note = ?, col_weight = ? WHERE group_id = ?",
-        (name, mode, expr, int(header_before), note, weight, group_id),
+        "reverse_order = ?, note = ?, col_weight = ? WHERE group_id = ?",
+        (name, mode, expr, int(header_before), int(reverse_order), note, weight, group_id),
     )
     if reshaped:
         _regenerate_slots(conn, group_id, len(codes))

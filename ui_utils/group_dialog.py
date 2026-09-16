@@ -108,6 +108,10 @@ class GroupDialog(QDialog):
         self.w_header = QCheckBox("左側顯示快速識別日期")
         self.w_header.setChecked(bool(ex["header_before"]) if self.is_edit else True)
         form.addRow("版面：", self.w_header)
+        self.w_reverse = QCheckBox("反向排序（右往左）")
+        self.w_reverse.setToolTip("勾選後這個群組在月表上的欄位左右顛倒，第 1 格排在最右邊")
+        self.w_reverse.setChecked(bool(ex["reverse_order"]) if self.is_edit else False)
+        form.addRow("", self.w_reverse)
 
         self.w_note = QPlainTextEdit(ex["note"] if self.is_edit else "")
         self.w_note.setFixedWidth(_FIELD_W)
@@ -172,11 +176,13 @@ class GroupDialog(QDialog):
                 if self.is_edit:
                     self.reshaped = template.update_group(
                         conn, self.group_id, self.w_name.text(), mode, expr,
-                        self.w_header.isChecked(), self.w_note.toPlainText().strip())
+                        self.w_header.isChecked(), self.w_note.toPlainText().strip(),
+                        reverse_order=self.w_reverse.isChecked())
                 else:
                     self.group_id = template.add_group(
                         conn, self.template_id, self.w_name.text(), mode, expr,
-                        self.w_header.isChecked(), self.w_note.toPlainText().strip())
+                        self.w_header.isChecked(), self.w_note.toPlainText().strip(),
+                        reverse_order=self.w_reverse.isChecked())
         except template.TemplateError as exc:
             msgWarning("無法儲存", str(exc), self)
             return

@@ -23,7 +23,7 @@ from tabs.tab_personnel import TabPersonnel
 from tabs.tab_rules import TabRules
 from ui_utils import installDateEditInputGuard
 
-APP_NAME = "警察勤務輪番表產生器"
+APP_NAME = "勤休預定表產生器"
 DB_NAME = "dbfile.db"
 LOG_NAME = "error.log"
 

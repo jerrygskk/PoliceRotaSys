@@ -75,6 +75,18 @@ class TestGroups(_EditTestCase):
         with self.assertRaisesRegex(template.TemplateError, "最多 7 個字"):
             template.add_group(self.conn, self.empty, "一二三四五六七八", MODE_ROTATE, "6-9")
 
+    def test_reverse_order_is_saved_and_copied(self):
+        gid = template.add_group(self.conn, self.empty, "甲組", MODE_ROTATE, "1-5",
+                                 reverse_order=True)
+        self.assertEqual(template.group_rows(self.conn, self.empty)[0]["reverse_order"], 1)
+        template.update_group(self.conn, gid, "甲組", MODE_ROTATE, "1-5", True, "",
+                              reverse_order=False)
+        self.assertEqual(template.group_rows(self.conn, self.empty)[0]["reverse_order"], 0)
+        template.update_group(self.conn, gid, "甲組", MODE_ROTATE, "1-5", True, "",
+                              reverse_order=True)
+        copy = template.copy_template(self.conn, self.empty, "複本")
+        self.assertEqual(template.group_rows(self.conn, copy)[0]["reverse_order"], 1)
+
     def test_bad_range_is_refused(self):
         with self.assertRaises(RangeError):
             template.add_group(self.conn, self.empty, "甲組", MODE_ROTATE, "20-1")

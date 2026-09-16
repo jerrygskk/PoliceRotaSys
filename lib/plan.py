@@ -96,6 +96,7 @@ def _group_to_snapshot(row: sqlite3.Row, group: Group) -> dict:
         "name": group.name,
         "mode": group.mode,
         "header_before": bool(row["header_before"]),
+        "reverse_order": bool(row["reverse_order"]),
         "col_weight": row["col_weight"],
         "note": row["note"],
         "slots": [
@@ -147,10 +148,18 @@ def build_snapshot(
 # --------------------------------------------------------------------------
 
 def _insert_plan(
-    conn: sqlite3.Connection, year: int, month: int, origin: str, snapshot: dict
+    conn: sqlite3.Connection, year: int, month: int, origin: str, snapshot: dict,
+    overwrite: bool = False,
 ) -> int:
+    """寫入一個月的月表。overwrite=True 時先刪掉該月既有的月表。
+
+    ⚠️ 刪舊與寫新在**同一個交易**裡：驗證都在呼叫這裡之前做完，這裡只剩兩條 SQL，
+    中途出錯整筆回滾，不會出現「舊的刪了、新的沒寫進去」。
+    """
     if get_plan(conn, year, month) is not None:
-        raise PlanError(f"{year - 1911} 年 {month} 月已經有月表了，要重產請先刪除")
+        if not overwrite:
+            raise PlanError(f"{year - 1911} 年 {month} 月已經有月表了")
+        conn.execute("DELETE FROM Month_Plan WHERE year = ? AND month = ?", (year, month))
     cur = conn.execute(
         "INSERT INTO Month_Plan(year, month, origin, created_at, snapshot) "
         "VALUES (?, ?, ?, ?, ?)",
@@ -167,13 +176,17 @@ def create_plan(
     month: int,
     template_id: int,
     seeds: dict[int, dict[int, int]],
+    overwrite: bool = False,
 ) -> int:
-    """「自訂起始」：用一份模板加承辦人指定的起始格位建立月表。"""
+    """「自訂起始」：用一份模板加承辦人指定的起始格位建立月表。
+
+    overwrite=True＝覆蓋該月既有月表（畫面先確認過；過去月份另外提醒）。
+    """
     if not seeds:
         raise PlanError("沒有任何配對")
     _assert_seeds_complete(conn, template_id, seeds)
     snapshot = build_snapshot(conn, template_id, seeds)
-    return _insert_plan(conn, year, month, ORIGIN_CUSTOM, snapshot)
+    return _insert_plan(conn, year, month, ORIGIN_CUSTOM, snapshot, overwrite)
 
 
 def chain_blocked_reason(
@@ -214,10 +227,12 @@ def chained_snapshot(conn: sqlite3.Connection, year: int, month: int) -> dict:
     return snapshot
 
 
-def create_chained_plan(conn: sqlite3.Connection, year: int, month: int) -> int:
+def create_chained_plan(
+    conn: sqlite3.Connection, year: int, month: int, overwrite: bool = False
+) -> int:
     """「接續上月」：番號從上月最後一天接著推，承辦人什麼都不用輸入。"""
     return _insert_plan(
-        conn, year, month, ORIGIN_CHAIN, chained_snapshot(conn, year, month)
+        conn, year, month, ORIGIN_CHAIN, chained_snapshot(conn, year, month), overwrite
     )
 
 
@@ -296,12 +311,10 @@ def pairable_groups(conn: sqlite3.Connection, template_id: int) -> list[tuple[sq
     ]
 
 
-def prefill_from_previous(
-    conn: sqlite3.Connection, year: int, month: int, template_id: int
+def _prefill_from_snapshot(
+    conn: sqlite3.Connection, snapshot: dict, template_id: int
 ) -> tuple[dict[int, dict[int, int]], list[str]]:
-    """「接續上月填入」：把上月推到本月 1 日的站位，套到這份模板上。
-
-    回傳 ``(配對, 沒辦法沿用的群組名稱)``。
+    """把一份快照的站位套到模板上。回傳 ``(配對, 沒辦法沿用的群組名稱)``。
 
     ⚠️ 只沿用**名稱相同、且每格代碼與休完全一樣**的群組。格數一樣但休移了位，
     站位就完全不能沿用——硬套的話月表印出來看不出錯。對不上的群組整組留空，
@@ -310,15 +323,14 @@ def prefill_from_previous(
     人用**姓名**對回目前的在職名單：快照裡存的是姓名，離職或改名的人對不到，
     那一格就留空讓承辦人補。
     """
-    snapshot = chained_snapshot(conn, year, month)
-    previous = {data["name"]: data for data in snapshot["groups"]}
+    source = {data["name"]: data for data in snapshot["groups"]}
     by_name = {row["name"]: row["member_id"] for row in active_members(conn)}
 
     seeds: dict[int, dict[int, int]] = {}
     skipped: list[str] = []
     used: set[int] = set()
     for row, group in pairable_groups(conn, template_id):
-        data = previous.get(row["name"])
+        data = source.get(row["name"])
         if data is None or snapshot_to_group(data).slots != group.slots:
             skipped.append(row["name"])
             continue
@@ -333,6 +345,20 @@ def prefill_from_previous(
     return seeds, skipped
 
 
+def prefill_from_previous(
+    conn: sqlite3.Connection, year: int, month: int, template_id: int
+) -> tuple[dict[int, dict[int, int]], list[str]]:
+    """「接續上月填入」：把上月推到本月 1 日的站位，套到這份模板上。"""
+    return _prefill_from_snapshot(conn, chained_snapshot(conn, year, month), template_id)
+
+
+def prefill_from_month(
+    conn: sqlite3.Connection, year: int, month: int, template_id: int
+) -> tuple[dict[int, dict[int, int]], list[str]]:
+    """修改已產生的月份：配對彈窗帶入這個月現有的站位（不往後推）。"""
+    return _prefill_from_snapshot(conn, load_snapshot(conn, year, month), template_id)
+
+
 def delete_plan(conn: sqlite3.Connection, year: int, month: int) -> None:
     """刪掉整筆月表。刪除是明確動作，不會不小心發生。"""
     plan = get_plan(conn, year, month)
@@ -345,6 +371,15 @@ def delete_plan(conn: sqlite3.Connection, year: int, month: int) -> None:
 # --------------------------------------------------------------------------
 # 組版
 # --------------------------------------------------------------------------
+
+def _ordered(data: dict, entries) -> tuple:
+    """反向排序（右往左）的群組把欄位左右顛倒；左側日期欄由 build_sheet 另外放，不受影響。
+
+    ⚠️ 快照裡沒有這個鍵時視為不反向（`.get`），不要改成 `data["reverse_order"]`。
+    """
+    entries = tuple(entries)
+    return entries[::-1] if data.get("reverse_order") else entries
+
 
 def build_sheet_for(
     conn: sqlite3.Connection, year: int, month: int, unit_name: str
@@ -370,7 +405,7 @@ def build_sheet_for(
             sections.append(
                 Section(
                     name=group.name,
-                    entries=tuple(Entry(name=slot.code) for slot in group.slots),
+                    entries=_ordered(data, [Entry(name=slot.code) for slot in group.slots]),
                     header_before=data["header_before"],
                     note=parse_note(data["note"]),
                     weight=data["col_weight"],
@@ -405,7 +440,7 @@ def build_sheet_for(
         sections.append(
             Section(
                 name=group.name,
-                entries=entries,
+                entries=_ordered(data, entries),
                 header_before=data["header_before"],
                 weight=data["col_weight"],
             )

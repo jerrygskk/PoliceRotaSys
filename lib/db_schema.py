@@ -54,6 +54,9 @@ TABLES = (
     -- 這個區塊每欄的相對寬度。手寫欄要留得下筆跡，所以比輪番欄寬。
     -- 由程式依模式決定，不給使用者調（維護者裁示）。
     col_weight  REAL NOT NULL DEFAULT 1.0,
+    -- 反向排序（右往左）：勾選後這個群組在月表上的欄位左右顛倒，第 1 格排最右邊。
+    -- 只影響印出來的欄序；左側日期欄仍在群組左邊，配對表的格位順序不變。
+    reverse_order INTEGER NOT NULL DEFAULT 0,
     -- 跨整個區塊的註記，畫在姓名列的合併格裡。一行一筆文字。
     note        TEXT NOT NULL DEFAULT '',
     sort_order  INTEGER NOT NULL DEFAULT 0

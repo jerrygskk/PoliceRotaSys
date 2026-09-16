@@ -123,6 +123,28 @@ class TestCreatePlan(_PlanTestCase):
         with self.assertRaisesRegex(plan.PlanError, "不屬於這份模板"):
             self.make_plan(seeds=bad)
 
+    def test_overwrite_replaces_the_month(self):
+        self.make_plan()
+        plan.create_plan(self.conn, 2026, 10, self.tpl,
+                         self.full_seeds(rotate_start=5), overwrite=True)
+        self.assertEqual(len(plan.list_plans(self.conn)), 1)
+        self.assertEqual(self.rotate_of(2026, 10)[db_seed.SEED_MEMBERS[0]], 5)
+
+    def test_failed_overwrite_keeps_the_old_month(self):
+        """⚠️ 驗證沒過就不得刪舊——不能出現「舊的刪了、新的沒寫進去」。"""
+        self.make_plan()
+        short = self.full_seeds()
+        short[self.gid["大輪番"]].pop(self.members[0])
+        with self.assertRaises(plan.PlanError):
+            plan.create_plan(self.conn, 2026, 10, self.tpl, short, overwrite=True)
+        self.assertEqual(len(self.rotate_of(2026, 10)), 20)
+
+    def test_chained_overwrite(self):
+        self.make_plan(2026, 10)
+        self.make_plan(2026, 11)
+        plan.create_chained_plan(self.conn, 2026, 11, overwrite=True)
+        self.assertEqual(plan.get_plan(self.conn, 2026, 11)["origin"], plan.ORIGIN_CHAIN)
+
     def test_delete_then_recreate(self):
         self.make_plan()
         plan.delete_plan(self.conn, 2026, 10)
@@ -320,6 +342,40 @@ class TestBuildSheetFor(_PlanTestCase):
         self.assertEqual(columns[0].header_color, RED)
         self.assertEqual(columns[1].header_color, BLACK)
 
+    def _headers(self, sheet, name):
+        return [c.header for c in block_named(sheet, name).columns]
+
+    def test_reverse_order_flips_the_columns_right_to_left(self):
+        """勾「反向排序」的群組：欄位左右顛倒，第 1 格排最右邊；沒勾的群組不受影響。"""
+        self.make_plan()
+        normal = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
+        plan.delete_plan(self.conn, 2026, 10)
+        for name in ("大輪番", "劃假"):
+            row = [r for r in template.group_rows(self.conn, self.tpl) if r["name"] == name][0]
+            template.update_group(self.conn, row["group_id"], row["name"], row["mode"],
+                                  row["range_expr"], bool(row["header_before"]), row["note"],
+                                  reverse_order=True)
+        self.make_plan()
+        flipped = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
+        self.assertEqual(self._headers(flipped, "大輪番"),
+                         self._headers(normal, "大輪番")[::-1])
+        self.assertEqual([c.code for c in block_named(flipped, "劃假").columns],
+                         ["晚", "中", "早"])
+        self.assertEqual(self._headers(flipped, "固定番"), self._headers(normal, "固定番"))
+
+    def test_snapshot_without_reverse_key_is_not_reversed(self):
+        """⚠️ 加這個設定之前產生的快照沒有這個鍵，要當成不反向。"""
+        self.make_plan()
+        before = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
+        snapshot = plan.load_snapshot(self.conn, 2026, 10)
+        for group in snapshot["groups"]:
+            group.pop("reverse_order", None)
+        import json
+        self.conn.execute("UPDATE Month_Plan SET snapshot = ? WHERE year = 2026 AND month = 10",
+                          (json.dumps(snapshot, ensure_ascii=False),))
+        self.conn.commit()
+        self.assertEqual(plan.build_sheet_for(self.conn, 2026, 10, UNIT), before)
+
     def test_title_uses_the_unit_name_setting(self):
         self.make_plan()
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
@@ -366,6 +422,14 @@ class TestPairingPrefill(_PlanTestCase):
         self.assertEqual(skipped, ["大輪番"])
         self.assertNotIn(self.gid["大輪番"], seeds)
         self.assertEqual(len(seeds[self.gid["固定番"]]), 8)
+
+    def test_prefill_from_month_uses_the_month_as_is(self):
+        """修改已產生的月份：帶入的是這個月現有的站位，不往後推。"""
+        seeds = self.full_seeds(rotate_start=7)
+        self.make_plan(2026, 10, seeds=seeds)
+        prefilled, skipped = plan.prefill_from_month(self.conn, 2026, 10, self.tpl)
+        self.assertEqual(skipped, [])
+        self.assertEqual(prefilled, seeds)
 
     def test_retired_member_leaves_the_slot_empty(self):
         self.make_plan(2026, 10)

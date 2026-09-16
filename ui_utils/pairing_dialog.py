@@ -74,10 +74,12 @@ class _BackgroundDelegate(QStyledItemDelegate):
 class PairingDialog(QDialog):
     """結果：accept 後讀 ``template_id`` 與 ``seeds``（``{group_id: {member_id: slot_seq}}``）。"""
 
-    def __init__(self, db_path, year, month, parent=None):
+    def __init__(self, db_path, year, month, edit_existing=False, parent=None):
+        """edit_existing=True：修改已產生的月份——預選該月用的模板並帶入現有配對。"""
         super().__init__(parent)
         self.db_path = db_path
         self.year, self.month = year, month
+        self.edit_existing = edit_existing
         self.template_id = None
         self.seeds = {}
         self._rows = []          # [(group_id, group_name, seq, code, is_rest)]
@@ -187,9 +189,22 @@ class PairingDialog(QDialog):
             self.cmb_template.addItem(row["name"], row["template_id"])
         self.cmb_template.blockSignals(False)
         self._current_template_index = -1
-        if templates:
-            self.cmb_template.setCurrentIndex(0)
-            self._onTemplateChanged(0)
+        if not templates:
+            return
+        index = 0
+        snapshot = None
+        if self.edit_existing:
+            with opened(self.db_path) as conn:
+                snapshot = plan.load_snapshot(conn, self.year, self.month)
+            # 預選這個月當初用的模板（快照記的是名稱；模板改名或刪掉就退回第一份）
+            found = self.cmb_template.findText(snapshot.get("template_name", ""))
+            index = max(found, 0)
+        self.cmb_template.blockSignals(True)
+        self.cmb_template.setCurrentIndex(index)
+        self.cmb_template.blockSignals(False)
+        self._onTemplateChanged(index)
+        if snapshot is not None:
+            self._prefillExisting()
 
     def currentTemplateId(self):
         return self.cmb_template.currentData()
@@ -412,6 +427,19 @@ class PairingDialog(QDialog):
             return True
         return confirmBox(title, "會覆蓋目前的配對，確定要繼續嗎？",
                           confirm_text="繼續", default_confirm=False, parent=self)
+
+    def _prefillExisting(self):
+        """修改已產生的月份：帶入這個月現有的站位。對不上的群組留空，提示在名單上方。"""
+        try:
+            with opened(self.db_path) as conn:
+                seeds, skipped = plan.prefill_from_month(
+                    conn, self.year, self.month, self.currentTemplateId())
+        except Exception as exc:
+            reportError("無法帶入現有配對", exc, self)
+            return
+        self._setAssignments(seeds)
+        if skipped:
+            self.lbl_people.setText("未帶入（格位或輪休已改）：" + "、".join(skipped))
 
     def _fillFromPrevious(self):
         tid = self.currentTemplateId()
