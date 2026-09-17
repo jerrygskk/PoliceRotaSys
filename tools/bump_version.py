@@ -17,9 +17,9 @@ from pathlib import Path
 
 # 顯示字串（要改產品名改這裡）
 # ⚠️ public repo：不得寫入實際單位名稱，單位名稱由 App_Settings 的 unit_name 設定
-COMPANY     = "警察勤務輪番表產生器"
-PRODUCT     = "警察勤務輪番表產生器"
-DESCRIPTION = "警察勤務輪番表產生器"
+COMPANY     = "勤休預定表產生器"
+PRODUCT     = "勤休預定表產生器"
+DESCRIPTION = "勤休預定表產生器"
 COPYRIGHT   = "© 2026 PoliceRotaSys"
 EXE_NAME    = "PoliceRotaSys.exe"
 

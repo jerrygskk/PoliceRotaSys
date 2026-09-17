@@ -16,13 +16,13 @@ VSVersionInfo(
       StringTable(
         '040404b0',
         [
-          StringStruct('CompanyName', '警察勤務輪番表產生器'),
-          StringStruct('FileDescription', '警察勤務輪番表產生器'),
+          StringStruct('CompanyName', '勤休預定表產生器'),
+          StringStruct('FileDescription', '勤休預定表產生器'),
           StringStruct('FileVersion', '0.1.0'),
           StringStruct('InternalName', 'PoliceRotaSys.exe'),
           StringStruct('LegalCopyright', '© 2026 PoliceRotaSys'),
           StringStruct('OriginalFilename', 'PoliceRotaSys.exe'),
-          StringStruct('ProductName', '警察勤務輪番表產生器'),
+          StringStruct('ProductName', '勤休預定表產生器'),
           StringStruct('ProductVersion', '0.1.0')
         ])
     ]),
