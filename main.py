@@ -15,7 +15,6 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget
 
 from lib import db_backup, db_schema, db_seed
 from lib.db_utils import KEY_BACKUP_SECOND_DIR, get_setting, opened
-from lib.loading_screen import LoadingScreen
 from lib.resource_path import resource_path
 from lib.theme import APPLE_STYLE
 from lib.version import __version__
@@ -26,6 +25,7 @@ from tabs.tab_maintenance import TabMaintenance
 from tabs.tab_personnel import TabPersonnel
 from tabs.tab_rules import TabRules
 from ui_utils import installDateEditInputGuard, msgCritical
+from ui_utils.loading_screen import LoadingScreen
 
 APP_NAME = "勤休預定表產生器"
 DB_NAME = "dbfile.db"
