@@ -99,10 +99,13 @@ class TestSchema(_DbTestCase):
 
 
 class TestSeed(_DbTestCase):
-    def test_only_three_female_officers_in_the_seed(self):
-        """模板標幾位女警讓人看得到「紅字＝女警」，三位就夠。"""
-        self.assertEqual(len(db_seed.SEED_FEMALE), 3)
+    def test_seed_has_female_officers_marked(self):
+        """假資料要有女警，一開起來才看得到「紅字＝女警」。"""
+        self.assertTrue(db_seed.SEED_FEMALE)
         self.assertTrue(set(db_seed.SEED_FEMALE) <= set(db_seed.SEED_MEMBERS))
+        self.seed()
+        marked = {r[0] for r in self.conn.execute("SELECT name FROM Member WHERE female = 1")}
+        self.assertEqual(marked, set(db_seed.SEED_FEMALE))
 
     def test_seed_creates_members_and_one_template(self):
         self.seed()

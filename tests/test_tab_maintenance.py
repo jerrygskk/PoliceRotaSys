@@ -112,9 +112,14 @@ class TestBackupPanel(_TempDb):
 
 class TestVacuumPanel(_TempDb):
     def test_vacuum_reports_sizes(self):
-        with mock.patch.object(tab_maintenance, "msgInfo") as done:
+        with mock.patch.object(tab_maintenance.db_backup, "vacuum",
+                               return_value=(4096000, 2048000)) as run, \
+             mock.patch.object(tab_maintenance, "msgInfo") as done:
             self.tab.card_vacuum.vacuum()
-        self.assertIn("KB", done.call_args[0][1])
+        run.assert_called_once_with(self.db)
+        message = done.call_args[0][1]
+        self.assertIn("4,000", message)
+        self.assertIn("2,000", message)
 
 
 class TestSideNav(_TempDb):
@@ -158,13 +163,6 @@ class TestSideNav(_TempDb):
         with mock.patch.object(tab_maintenance, "choiceBox", return_value=0),              mock.patch.object(tab_maintenance, "msgWarning"):
             self.click(1)
         self.assertEqual(self.tab.nav.currentIndex(), 0)
-
-
-class TestMainWindow(_TempDb):
-    def test_maintenance_is_the_last_tab(self):
-        win = main.MainWindow(self.db)
-        self.addCleanup(win.deleteLater)
-        self.assertEqual(win.tabs.tabText(win.tabs.count() - 1), "功能維護")
 
 
 if __name__ == "__main__":

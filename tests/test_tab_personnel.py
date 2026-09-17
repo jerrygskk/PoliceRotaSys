@@ -132,9 +132,10 @@ class TestTabPersonnel(_TempDb):
             members.update_member(conn, mid, name, female, active=False)
             conn.commit()
         self.tab.load()
-        item = self.tab.tbl.item(0, _STATUS_COL)
-        self.assertEqual(item.text(), "離職")
-        self.assertEqual(item.foreground().color(), QColor(_COLOR_INACTIVE))
+        self.assertEqual(self.tab.tbl.item(0, _STATUS_COL).text(), "離職")
+        for col in (tab_personnel._SEQ_COL, _NAME_COL, _STATUS_COL):   # 整列反灰
+            self.assertEqual(self.tab.tbl.item(0, col).foreground().color(),
+                             QColor(_COLOR_INACTIVE), col)
 
     def test_add_keeps_unsaved_order(self):
         first, second = self.names()[:2]

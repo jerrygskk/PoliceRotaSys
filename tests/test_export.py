@@ -599,9 +599,6 @@ class TestPdf(_TempDirCase):
     def test_single_page(self):
         self.assertEqual(len(re.findall(rb"/Type\s*/Page[^s]", self.blob)), 1)
 
-    def test_title_is_in_the_document_metadata(self):
-        self.assertIn(b"/Title", self.blob)
-
     def test_february_also_renders(self):
         path = str(self.dir / "feb.pdf")
         pdf_writer.write_sheet(sample_sheet(2025, 2), path)

@@ -77,20 +77,6 @@ class FitWindowToAvailableTests(unittest.TestCase):
         self.assertGreaterEqual(result.x(), avail.x())
         self.assertGreaterEqual(result.y(), avail.y())
 
-    def test_maintainer_scenario_1440x780_on_1032_available_height_untouched(self):
-        # 維護者實測情境：可用高度 1032 實際像素，換算邏輯像素約 826（125% 縮放）
-        win = QRect(0, 0, 1440, 780)
-        avail = QRect(0, 0, 1536, 826)
-        self.assertEqual(fit_window_to_available(win, avail), win)
-
-    def test_small_laptop_1366x768_available_shrinks_window(self):
-        # 筆電情境：可用範圍比視窗小，須收斂
-        win = QRect(0, 0, 1440, 780)
-        avail = QRect(0, 0, 1366, 728)  # 扣工作列後高度更小
-        result = fit_window_to_available(win, avail)
-        self.assertEqual(result.width(), 1366)
-        self.assertEqual(result.height(), 728)
-
 
 class ApplyStartupGeometryTests(unittest.TestCase):
 

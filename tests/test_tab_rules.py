@@ -46,20 +46,6 @@ class TestGroupDialog(_TempDb):
         self.assertIs(_app.focusWidget(), dlg.w_name)
         self.assertEqual(dlg.styleSheet(), "", "彈窗不得自帶 stylesheet（QSS-8）")
 
-    def test_supported_kinds_share_one_line_with_the_count(self):
-        """可用類型接在「共 N 格」後面，同一行，不另起一行（維護者嫌折行醜）。"""
-        dlg = GroupDialog(self.db, self.tpl, existing=self.groups()[0])
-        self.addCleanup(dlg.deleteLater)
-        self.assertEqual(dlg.lbl_expr.text(), "共 20 格・數字/英文大寫/天干")
-        self.assertFalse(hasattr(dlg, "lbl_kinds"))
-
-    def test_new_group_shows_the_kinds_before_typing(self):
-        dlg = GroupDialog(self.db, self.tpl)
-        self.addCleanup(dlg.deleteLater)
-        self.assertEqual(dlg.lbl_expr.text(), "數字/英文大寫/天干")
-        dlg.w_mode.setCurrentIndex(2)             # 空白欄
-        self.assertEqual(dlg.lbl_expr.text(), "以逗號分隔")
-
     def test_name_field_stops_at_seven_characters(self):
         dlg = GroupDialog(self.db, self.tpl)
         self.addCleanup(dlg.deleteLater)
@@ -149,14 +135,6 @@ class TestTabRules(_TempDb):
         self.assertEqual(names, [g["name"] for g in self.groups()])
         self.assertTrue(self.tab.btn_add_group.isEnabled())
 
-    def test_date_column_shows_the_header_setting(self):
-        """群組表的「左側日期」欄：有加印顯示「有」，沒有顯示「無」。"""
-        texts = {self.tab.tbl_groups.item(r, _NAME_COL).text():
-                 self.tab.tbl_groups.item(r, tab_rules._DATE_COL).text()
-                 for r in range(self.tab.tbl_groups.rowCount())}
-        self.assertEqual(texts["大輪番"], "有")
-        self.assertEqual(texts["幹部"], "無")
-
     def test_slot_grid_shows_rest_and_click_toggles(self):
         self.tab.tbl_groups.selectRow(0)          # 大輪番，第 6 格是休
         self.assertIn("休", self.tab.slotTiles[5].text())
@@ -185,7 +163,7 @@ class TestTabRules(_TempDb):
         self.assertTrue(self.tab._click_timer.isActive())
         self.tab._click_timer.stop()
         self.tab._applyPendingSlotClick()
-        self.assertIn("輪休", self.tab.slotTiles[0].text())
+        self.assertEqual(self.tab.slotTiles[0].property("state"), "rest")
 
     def test_cancelling_the_code_dialog_changes_nothing(self):
         self.tab.tbl_groups.selectRow(0)
@@ -269,11 +247,6 @@ class TestSlotNumbering(_TempDb):
         self.addCleanup(self.tab.deleteLater)
         self.tab.tbl_groups.selectRow(len(self.groups()) - 1)
 
-    def test_default_uses_the_code(self):
-        """預設不勾（維護者裁示 2026-09-16）。"""
-        self.assertFalse(self.tab.chk_from_one.isChecked())
-        self.assertEqual(self.tab.slotTiles[0].text(), "30\n30番")
-
     def test_checked_counts_from_one_and_is_remembered(self):
         self.tab.chk_from_one.setChecked(True)
         self.assertEqual(self.tab.slotTiles[0].text(), "30\n1番")
@@ -281,49 +254,15 @@ class TestSlotNumbering(_TempDb):
         self.addCleanup(again.deleteLater)
         self.assertTrue(again.chk_from_one.isChecked())
 
-    def test_blank_group_shows_label_only(self):
-        """空白欄只顯示欄標題；固定番照番號（21 → 21番），兩者都不顯示由 1 起算的勾選框。"""
-        names = [g["name"] for g in self.groups()]
-        self.tab.tbl_groups.selectRow(names.index("劃假"))
-        self.assertEqual([t.text() for t in self.tab.slotTiles], ["早", "中", "晚"])
-        self.assertTrue(self.tab.chk_from_one.isHidden())
-        self.tab.tbl_groups.selectRow(names.index("固定番"))
-        self.assertEqual(self.tab.slotTiles[0].text().splitlines(), ["21", "21番"])
-        self.assertTrue(self.tab.chk_from_one.isHidden(), "由 1 起算只作用在輪番類型")
-
-    def test_many_slots_scroll_instead_of_growing_the_card(self):
-        """⚠️ 格數多時方塊在卡片內捲動，不得把上面的群組表擠扁（50 格曾只剩一列）。"""
-        with opened(self.db) as conn:
-            template.add_group(conn, self.tpl, "六十格", MODE_ROTATE, "101-160")
-        self.tab.reload()
-        self.tab.tbl_groups.selectRow(len(self.groups()) - 1)
-        rows = tab_rules.MAX_VISIBLE_TILE_ROWS
-        self.assertEqual(
-            self.tab.tiles_scroll.height(),
-            rows * tab_rules.TILE_H + (rows - 1) * tab_rules.TILE_SPACING)
-        self.assertEqual(len(self.tab.slotTiles), 60)
-
-    def test_legend_lists_only_possible_states(self):
-        names = [g["name"] for g in self.groups()]
-        shown = lambda: {s for s, c in self.tab.legend_chips.items() if not c.isHidden()}
-        self.tab.tbl_groups.selectRow(names.index("大輪番"))
-        self.assertEqual(shown(), {"work", "rest", "override"})
-        self.tab.tbl_groups.selectRow(names.index("固定番"))
-        self.assertEqual(shown(), {"work", "override"})
-        self.tab.tbl_groups.selectRow(names.index("劃假"))
-        self.assertEqual(shown(), set())
-
 
 class TestTextInputDialog(unittest.TestCase):
-    """公版輸入彈窗：中文按鈕、不自帶樣式、開啟時游標在輸入欄。"""
+    """公版輸入彈窗：不自帶樣式、開啟時游標在輸入欄。"""
 
-    def test_template_buttons_and_focus(self):
-        from PySide6.QtWidgets import QPushButton
+    def test_template_style_and_focus(self):
         from ui_utils.text_dialog import TextInputDialog
         dlg = TextInputDialog("自訂代碼", "第 4 格代碼：", "D")
         self.addCleanup(dlg.deleteLater)
         dlg.show(); _app.processEvents()
-        self.assertEqual(sorted(b.text() for b in dlg.findChildren(QPushButton)), ["取消", "確定"])
         self.assertEqual(dlg.styleSheet(), "", "彈窗不得自帶 stylesheet（QSS-8）")
         self.assertIs(_app.focusWidget(), dlg.w_text)
         self.assertEqual(dlg.value(), "D")

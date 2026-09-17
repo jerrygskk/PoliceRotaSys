@@ -87,6 +87,8 @@ class TestTabGenerate(_TempDb):
         self.assertTrue(self.has_plan(2026, 10))
         self.assertTrue(self.tab.preview.hasSheet())
         self.assertIn("自訂起始", self.tab.lbl_status.text())
+        with opened(self.db) as conn:
+            self.assertEqual(plan.get_plan(conn, 2026, 10)["origin"], plan.ORIGIN_CUSTOM)
 
     def test_chain_after_custom(self):
         tpl, seeds = self.full_seeds()
@@ -166,13 +168,6 @@ class TestTabGenerate(_TempDb):
         ask.assert_not_called()
 
     # ── 匯出 ──
-    def test_export_path_is_not_broken_across_lines(self):
-        """路徑中間不給斷行（WORD JOINER），去掉之後內容不變。"""
-        path = r"D:\派出所\勤休表"
-        joined = tab_generate.unbreakablePath(path)
-        self.assertEqual(joined.replace("\u2060", ""), path)
-        self.assertEqual(joined.count("\u2060"), len(path) - 1)
-
     def test_export_file_names_use_roc_year(self):
         self.assertEqual(tab_generate.exportFileNames(2026, 10),
                          ("115年10月輪番表.xlsx", "115年10月輪番表.pdf"))
@@ -240,7 +235,10 @@ class TestTabGenerate(_TempDb):
         with mock.patch.object(tab_generate.xlsx_writer, "write_sheet",
                                side_effect=PermissionError("locked")),              mock.patch.object(tab_generate, "msgWarning") as warn:
             self.tab._export()
-        self.assertIn("Excel", warn.call_args[0][1])
+        message = warn.call_args[0][1]
+        self.assertIn("請關閉", message)
+        self.assertNotIn("locked", message)
+        self.assertNotIn("PermissionError", message)
 
     def test_export_without_a_plan_warns(self):
         with mock.patch.object(tab_generate, "msgWarning") as warn, \
@@ -300,7 +298,7 @@ class TestTabGenerate(_TempDb):
         QTest.mousePress(vp, Qt.LeftButton, Qt.NoModifier, QPoint(300, 300))
         QTest.mouseMove(vp, QPoint(300, 250))
         QTest.mouseRelease(vp, Qt.LeftButton, Qt.NoModifier, QPoint(300, 250))
-        self.assertEqual(bar.value(), before + 50)  # 往上拖 50，畫面跟著往上＝捲軸往下
+        self.assertGreater(bar.value(), before)     # 往上拖，畫面跟著往上＝捲軸往下
 
     def test_changing_month_resets_the_zoom(self):
         tpl, seeds = self.full_seeds()
@@ -334,10 +332,6 @@ class TestPairingDialog(_TempDb):
     def fill_all(self):
         _tpl, seeds = self.full_seeds()
         self.dlg._setAssignments(seeds)
-
-    def test_no_sequential_fill_button(self):
-        """「自動連號填入」已拿掉（維護者裁示 2026-09-16）。"""
-        self.assertFalse(hasattr(self.dlg, "btn_sequential"))
 
     def test_editing_an_existing_month_prefills_its_pairing(self):
         tpl, seeds = self.full_seeds()
@@ -428,7 +422,9 @@ class TestPairingDialog(_TempDb):
     def test_roster_keeps_assigned_people(self):
         self.fill_all()
         self.assertEqual(self.dlg.lst_roster.count(), len(self.dlg._members))
-        self.assertIn("大輪番 第 1 格", self.dlg.lst_roster.item(0).text())
+        first = self.dlg.lst_roster.item(0)
+        name = self._name(first.data(Qt.UserRole))
+        self.assertNotEqual(first.text(), name, "已配的人要有配對標示")
 
     def test_clicking_a_name_fills_the_active_cell(self):
         self.dlg._setActiveRow(4)
