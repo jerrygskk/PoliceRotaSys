@@ -230,8 +230,9 @@ tests/pii_denylist.local.txt
 *.xlsx
 *.pdf
 
-# 交接快照（僅留本機，會過期）
-docs/handover.md
+# 本機文件與產物；README 截圖需納入版本控制
+docs/*
+!docs/img/
 
 # 本機資料庫（真實資料，不入庫）
 dbfile.db
