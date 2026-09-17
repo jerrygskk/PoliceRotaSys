@@ -7,4 +7,4 @@
 ⚠️ 不要手改：進版一律走 `python tools/bump_version.py <版號>`，
 否則 version_info.txt 會與版號不同步。進位與否由維護者決定。
 """
-__version__ = "0.1.0"
+__version__ = "0.1.1"
