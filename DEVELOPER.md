@@ -780,7 +780,13 @@ Excel 與 PDF 可以分開設定。範圍是每天的格子（番號、休、日
 python -m PyInstaller --clean --noconfirm PoliceRotaSys.spec
 ```
 
-輸出 `dist/PoliceRotaSys.exe`（onefile，約 27MB）。資料庫與 `error.log` 建在 exe 旁。
+輸出 `dist/PoliceRotaSys.exe`（onefile，約 25.8MB）。資料庫、`error.log`、`backups/` 建在 exe 旁。
+
+程式圖示 `res/buttons/police_badge.ico`（exe 圖示）／`.svg`（視窗圖示）與啟動畫面
+`res/buttons/banner.png`（`ui_utils/loading_screen.py`）由 spec 的 `datas` 帶進去，執行時經
+`lib/resource_path.py` 找路徑（打包後在 `sys._MEIPASS`）。⚠️ 圖檔也佔 exe 大小：banner 畫面上
+只顯示 700×279，存 1050 寬即可（原圖 1641 寬 978KB → 374KB）；ico 的 256 層要存 PNG 壓縮
+（未壓縮 BMP 262KB → 36KB）。
 
 ⚠️ **spec 已入庫，是原始碼不是產物**（比照 PoliceDocSys `e31af0c`）。舊做法（排除
 `*.spec`、每次用命令列旗標重生）不用：①命令列**砍不掉** hook 以 binary 身分收進來的
@@ -792,10 +798,23 @@ spec 裡另開清單。未瘦身時 exe 約 50MB，六成是用不到的 Qt 元�
 QML／Quick、PDF「閱讀」模組、網路、多餘圖片格式與語系檔、備用顯示外掛，以及打包機
 PATH 上誤撿到的 Git OpenSSL。
 
+2026-09-17 再瘦一輪（29.9MB → 26.7MB，加上圖檔縮小 → 25.8MB），拿掉的是**標準庫被連帶拉進來**
+的東西：`ssl`／`_hashlib`（帶進 libssl／libcrypto 共 6MB；程式不連網，hashlib 自動改用內建版）、
+`lzma`／`bz2`（xlsx 只用 deflate）、`defusedxml`（openpyxl 讀檔防護，本程式只寫檔；它會一路拉進
+xmlrpc、pydoc）、`qjpeg`（沒有 JPG）。以同一份排除清單另打一支探針 exe 實測：Excel／PDF 匯出、
+openpyxl 讀回、`random`、`hashlib.md5` 都正常。
+評估過**不砍**的：`qmodernwindowsstyle`（底層外觀會變）、`unicodedata`（`traceback` 會用，寫錯誤
+紀錄時再出錯就查不到）、三份重複的 VC 執行階段 DLL（PySide6／shiboken 各自從自己的資料夾載入）、
+UPX（Qt DLL 壓縮後易出問題、易被防毒誤判）。
+⚠️ 打包版沒有 `qoffscreen`：exe 設了 `QT_QPA_PLATFORM=offscreen` 會直接崩潰（0xC0000409），
+驗證打包版一律用正常顯示。
+
 ⚠️ 本專案**不提供 `loadUi`**：`QtUiTools` 一 import 就連帶要求 Qt6UiTools →
 Qt6OpenGLWidgets → Qt6OpenGL 整串 DLL（連結期硬相依）。畫面本來就一律程式碼排版，
 拿掉之後 OpenGL 才砍得掉。公文系統有 UiTools，**它的清單不可原樣抄回**。
 
 ⚠️ **改排除清單後的檢查**：build 成功、原始碼跑得動、測試全過，都**不代表**打包版
 能用（PITFALLS PKG 組）。至少要：實際開啟 exe；產一個月表看預覽；匯出一次 Excel 與
-PDF；確認勾選框與下拉箭頭（SVG 圖示）有畫出來。
+PDF；確認勾選框與下拉箭頭（SVG 圖示）有畫出來；確認啟動畫面與視窗圖示有出現。
+⚠️ 這台機器若沒辦法手點匯出，可比照上面的探針做法：寫一支小程式直接呼叫匯出，用同一份
+`EXCLUDES`／`prune` 另外打包執行（探針不入庫）。

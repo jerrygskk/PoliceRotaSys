@@ -198,6 +198,12 @@
   Git for Windows 時，PyInstaller 從 `C:\Program Files\Git\mingw64\bin` 撿到那份
   OpenSSL（公文系統 PKG-6 同一件事）。由 `pyi_prune` 依**來源路徑**濾掉；不要改成
   「build 前記得清 PATH」，靠人記得的做法換台機器就失效。
+- **PKG-4**: **純本機程式的 exe 裡有 5MB 的 `libcrypto-3.dll`（Python 自己那份）** → 不是 Git 那份
+  （PKG-3），是標準庫一路 import 拉進來的：openpyxl 有裝 `defusedxml` 就 import 它 → `xmlrpc`
+  → `http.client` → `ssl`；`random` → `hashlib` → `_hashlib` → libcrypto。PyInstaller 只看
+  import 關係、不看執行時會不會用到。用 `build/<名稱>/xref-*.html` 查「imported by」找源頭，
+  在 `EXCLUDES` 擋 Python 模組，DLL 就不會被帶進來。⚠️ 擋掉之後要打包實測，不能只跑原始碼
+  （原始碼環境模組都在，測不出缺什麼）。
 
 #### TST：測試
 
@@ -208,3 +214,7 @@
 - **TST-2**: **`openpyxl` 的 `ws[2]` 索引與欄號差 2**
   → `ws[2]` 回傳整列、從 A 欄起算，而日期格從 C 欄開始，所以第 n 天是
   `row[n + 1]`。寫死索引前先想清楚起點。
+- **TST-3**: **pytest 寫法的測試檔放進 `tests/`，官方指令跑全套卻一項都沒跑到** → 本專案跑
+  `python -m unittest discover -s tests -t .`，只收 `unittest.TestCase` 裡的方法；裸函式
+  `def test_xxx()` 與 `monkeypatch`／`tmp_path` fixture **不會被收進去，也不報錯**，數字照樣
+  全綠（2026-09-17 Codex 加的啟動畫面、資源路徑、打包圖示測試就這樣漏跑）。一律寫成 TestCase。

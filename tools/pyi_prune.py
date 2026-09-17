@@ -43,8 +43,10 @@ _DROP_BASENAMES = {
     "qt6qmlmeta.dll",
     "qt6qmlworkerscript.dll",
     "qt6virtualkeyboard.dll",
-    # 用不到的影像格式（本專案圖示只有 SVG；qsvg／qsvgicon 是勾選框與下拉箭頭的命脈，
-    # 不可砍；qjpeg 保留當安全網、qico 保留給視窗圖示）
+    # 用不到的影像格式。保留：qsvg／qsvgicon（勾選框、下拉箭頭、視窗圖示的命脈）、
+    # qico（視窗圖示）；PNG 是 Qt6Gui 內建，啟動畫面 banner.png 不需要 plugin。
+    # ⚠️ 本專案沒有任何 JPG，qjpeg 一併砍（2026-09-17）；日後加 JPG 圖檔要記得拿掉這行
+    "qjpeg.dll",
     "qtiff.dll",
     "qwebp.dll",
     "qicns.dll",
@@ -84,6 +86,17 @@ EXCLUDES = [
     "PySide6.QtNetwork", "PySide6.QtOpenGL", "PySide6.QtOpenGLWidgets",
     "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtQuickWidgets",
     "PySide6.QtPdf", "PySide6.QtUiTools",
+    # ── 標準庫裡被連帶拉進來、本程式用不到的（2026-09-17 實測 29.9MB → 26.7MB）──
+    # 網路／加密：程式完全不連網。ssl 會把 libssl-3.dll 帶進來；_hashlib 會把
+    # libcrypto-3.dll（5.2MB）帶進來。hashlib 在 _hashlib 缺席時自動改用內建的
+    # _sha2／_md5（編進 python312.dll），random 與 openpyxl 照常可用。
+    "ssl", "_ssl", "_hashlib", "ftplib", "http.server", "socketserver", "webbrowser",
+    # lzma／bz2：zipfile 只在讀寫這兩種壓縮法時才 import；xlsx 只用 deflate
+    "lzma", "_lzma", "bz2", "_bz2", "tarfile",
+    # defusedxml：openpyxl 的「讀取」防護，有裝就會 import 並一路拉進 xmlrpc／pydoc；
+    # 本程式只寫 xlsx、不讀外部檔案，缺席時 openpyxl 改用標準 xml
+    "defusedxml", "xmlrpc", "pydoc", "pydoc_data",
+    "unittest",
 ]
 
 
