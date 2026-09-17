@@ -31,9 +31,19 @@ tests/test_dialog_disabled_style.py            ← QSS-8 的回歸網
 tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 ```
 
-**列印三層驗收網**（`PRINTING.md` ＋ `tools/print_baseline.py`、`tools/qt_pdf_export.py`、
-`tools/render_diff.py`、`tests/test_print_baseline.py`）：本專案主產出就是 A3 表格，
-這套基準比對機制等於免費繼承——否則每次改版面只能靠人上機用眼睛看。
+**列印驗收網（暫緩，2026-09-17 維護者裁示）**：PoliceDocSys 三層裡，Qt 對 matplotlib
+比對與「產品不含 matplotlib」兩層是為換繪圖引擎而做，本專案一開始就是 Qt，**不搬**。
+只有「基準圖雜湊比對」適用，規劃如下，**等 PDF 版面上機定案後再做**
+（版面還在頻繁調整時，每改一次就要看圖重建基準，成本大於效益）：
+
+- 固定虛構資料案例（31／28 天、人多觸發縮小、人少欄變寬、代號上方／下方、反向排序、女警、長名字）
+- 直接呼叫 `pdf_writer.paint_sheet` 畫成圖算雜湊，不比 PDF 檔（內含建立時間，每次都不同）
+- 比對前先查環境（標楷體／Tahoma 字型檔、Qt 版本、顯示縮放），不符就停，不當成程式回歸
+- 有差異時新舊圖並排輸出到未入庫資料夾；雜湊清單入庫、圖檔不入庫
+- 基準初建須維護者逐張目視核准（雜湊一致只證明前後沒變，不證明正確）
+- 工具手動執行，不進自動測試（換機器雜湊全滅）
+- **Excel 不納入**：要靠本機 Excel 轉 PDF，版本一更新就不穩；繼續靠現有欄寬／字級／合併格測試
+- 故意改版面時比對一定報差異，看過並排圖確認後重建基準即可；它的價值是抓「沒打算改卻跟著變」的地方
 
 ## 三、搬規則（最值錢的部分）
 
@@ -109,6 +119,6 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 - [x] 產生月表分頁、配對彈窗、預覽（`tabs/tab_generate.py`、`ui_utils/pairing_dialog.py`、`ui_utils/sheet_preview.py`）
 - [x] 維護分頁（`tabs/tab_maintenance.py`）：月表標題、資料庫備份、壓縮；`lib/db_backup.py` 自 PoliceDocSys 搬入
       開機損毀檢查＋GFS 自動備份＋異地位置，拿掉還原／救援視窗／筆數預覽。匯出資料夾設定改為預設桌面、不記住
-- [ ] `lib/print_canvas.py` 與列印三層驗收網
+- [ ] 列印驗收網（只做基準圖雜湊比對，暫緩到 PDF 版面定案，規劃見第二節）
 - [x] `lib/version.py` ＋ `tools/bump_version.py`（產品名改為本專案、拿掉獨立版與 README 版號同步；起始 0.1.0）
 - [x] PyInstaller 打包（spec 入庫＋`tools/pyi_prune.py` 瘦身，DEVELOPER §10）
