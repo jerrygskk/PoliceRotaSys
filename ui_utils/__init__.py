@@ -27,6 +27,7 @@ from .table import (
     LINK_COLOR,
     FIXED_COL_WIDTHS,
 )
+from .help_dialog import HelpDialog, showHelpDialog, attachHelpButton
 
 __all__ = [
     "msgInfo", "msgWarning", "msgCritical", "confirmBox", "choiceBox",
@@ -42,4 +43,5 @@ __all__ = [
     "setupPreviewTable", "autoResizeTable", "applyNoElide",
     "makeDeleteBtn", "refreshDeleteBtns", "setDocIdLinkCell", "applyLinkStyle",
     "LINK_COLOR", "FIXED_COL_WIDTHS",
+    "HelpDialog", "showHelpDialog", "attachHelpButton",
 ]

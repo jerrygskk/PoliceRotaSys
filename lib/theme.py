@@ -6,6 +6,25 @@
 HINT_COLOR = "#aeaeb2"
 TEXT_COLOR = "#1c1c1e"
 
+# 程式內使用指引的 HTML 色彩。內容模組只引用這些公開 token，不自行寫死色碼。
+# ⚠️ 取自本專案既有色盤（選取藍 #6e8fac、infoBanner 的 #e3edf8／#274b72），
+# 不要另外引入公文系統的鋼藍 #4977b1。
+HELP_ACCENT_COLOR = "#8fa8c8"
+HELP_RULE_COLOR = "#e5e5ea"
+# 卡片框線：與 QSS 內的卡片同一個中灰（見下方註解「框線一律用中灰」）
+CARD_BORDER_COLOR = "#c7c7cc"
+HELP_MUTED_TEXT_COLOR = "#636366"
+HELP_INFO_BACKGROUND_COLOR = "#eef4fa"
+HELP_INFO_TEXT_COLOR = "#3a5a7d"
+HELP_WARNING_BACKGROUND_COLOR = "#fdf6e6"
+HELP_WARNING_TEXT_COLOR = "#7a5b16"
+# 使用指引裡提到按鈕名稱時的行內色塊，配色照三種按鈕角色（BTN_CONFIRM／CANCEL／DANGER）。
+# ⚠️ QTextBrowser 的行內樣式不吃 padding／border，左右內距只能靠 &nbsp; 撐；
+# 灰鈕在白底看不出來，所以用比按鈕本體深一階的 #e5e5ea 代理。
+HELP_BTN_PRIMARY_COLOR = "#D0ECF5"
+HELP_BTN_NORMAL_COLOR = "#e5e5ea"
+HELP_BTN_DANGER_COLOR = "#F5D4D0"
+
 APPLE_STYLE = """
 /* ── 全域基礎 ── */
 * {
@@ -563,6 +582,35 @@ QLabel#infoBanner {
     border: 1px solid #b9cfe6;
     border-radius: 8px;
     padding: 8px 12px;
+}
+/* 分頁列右上角的使用指引鈕：平常與分頁列同底（看起來只有圖示），滑過才浮出灰底。
+   它是輔助入口，不該長得像一個分頁；高度由程式取分頁列的 sizeHint，
+   見 ui_utils/help_dialog.attachHelpButton */
+QPushButton#helpButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 0;
+}
+QPushButton#helpButton:hover {
+    background-color: #d1d1d6;
+}
+QPushButton#helpButton:pressed {
+    background-color: #c7c7cc;
+}
+
+/* 使用指引的內文區：白底無邊框。⚠️ QTextBrowser 預設會畫一圈框線，與標題分隔線、
+   視窗底色疊起來會變成三層框，看起來很雜（維護者看截圖指出過） */
+QTextBrowser#helpBrowser {
+    background-color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 10px;
+}
+
+/* 使用指引視窗標題下方的細橫線（公版，元件不自帶 stylesheet） */
+QLabel#helpRule {
+    background-color: #d3dceb;
 }
 QLabel#infoBanner[tone="locked"] {
     background-color: #ececf0;

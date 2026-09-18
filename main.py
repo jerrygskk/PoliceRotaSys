@@ -24,7 +24,7 @@ from tabs.tab_generate import TabGenerate
 from tabs.tab_maintenance import TabMaintenance
 from tabs.tab_personnel import TabPersonnel
 from tabs.tab_rules import TabRules
-from ui_utils import installDateEditInputGuard, msgCritical
+from ui_utils import attachHelpButton, installDateEditInputGuard, msgCritical
 from ui_utils.loading_screen import LoadingScreen
 
 APP_NAME = "勤休預定表產生器"
@@ -98,6 +98,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.tab_personnel, "人員設定")
         self.tab_maintenance = TabMaintenance(db_path)
         self.tabs.addTab(self.tab_maintenance, "功能維護")
+        self.help_button = attachHelpButton(self.tabs, self)
         self.setCentralWidget(self.tabs)
 
     def closeEvent(self, event):

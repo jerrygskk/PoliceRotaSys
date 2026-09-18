@@ -19,6 +19,7 @@ a = Analysis(
     datas=[
         ("res/buttons/police_badge.svg", "res/buttons"),
         ("res/buttons/banner.png", "res/buttons"),
+        ("res/buttons/icon_help.svg", "res/buttons"),
     ],
     hiddenimports=[],
     hookspath=[],
