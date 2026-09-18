@@ -33,7 +33,7 @@ class RangeError(ValueError):
 
 
 class GroupError(ValueError):
-    """跨群組的邏輯錯誤（撞號等）。按「檢查規則」或「啟用」時才驗得出來。"""
+    """跨群組的邏輯錯誤（代碼衝突等）。按「檢查規則」或「啟用」時才驗得出來。"""
 
 
 @dataclass(frozen=True)
@@ -148,7 +148,7 @@ def build_slots(codes: tuple[str, ...], rest_seqs: set[int] = frozenset()) -> tu
     """把代碼序列組成槽位；``rest_seqs`` 是 1-based 的休假格位。"""
     for seq in rest_seqs:
         if not 1 <= seq <= len(codes):
-            raise RangeError(f"休假格位 {seq} 超出範圍（共 {len(codes)} 格）")
+            raise RangeError(f"休假格 {seq} 超出範圍（共 {len(codes)} 格）")
     return tuple(
         Slot(seq=i, code=code, is_rest=i in rest_seqs)
         for i, code in enumerate(codes, start=1)
@@ -179,7 +179,7 @@ def make_group(
     if mode not in MODES:
         raise ValueError(f"未知的模式：{mode}")
     if mode != MODE_ROTATE and rest_seqs:
-        raise ValueError(f"{mode} 群組沒有輪休格位")
+        raise ValueError(f"{mode} 群組沒有輪休格")
     if mode == MODE_BLANK:
         return Group(
             name=name,
@@ -199,7 +199,7 @@ def make_group(
 def validate_expr(expr: str) -> None:
     """離開欄位時的語法驗證（DEVELOPER §3「兩層驗證」）。
 
-    只驗這個欄位自己的事；撞號要等所有群組填完，由
+    只驗這個欄位自己的事；代碼衝突要等所有群組填完，由
     :func:`validate_groups` 負責。
     """
     expand_range(expr)
@@ -214,7 +214,7 @@ def validate_groups(groups: list[Group]) -> None:
         if group.mode == MODE_ROTATE and all(s.is_rest for s in group.slots):
             raise GroupError(f"「{group.name}」每一格都是休，沒有人會上班")
         if group.mode == MODE_BLANK:
-            # 空白欄的標題不是番號，不參與撞號檢查。
+            # 空白欄的標題不是番號，不參與衝突檢查。
             continue
         for slot in group.slots:
             owner = seen.get(slot.code)
@@ -235,7 +235,7 @@ def slot_on_day(group: Group, seed_seq: int, day: int) -> Slot:
     輪番群組每天往後推一格；固定番不隨日期前進（DEVELOPER §2）。
     """
     if not 1 <= seed_seq <= group.cycle_len:
-        raise ValueError(f"起始格位 {seed_seq} 超出範圍（共 {group.cycle_len} 格）")
+        raise ValueError(f"起始格 {seed_seq} 超出範圍（共 {group.cycle_len} 格）")
     if day < 1:
         raise ValueError("日期從 1 起算")
     if group.mode != MODE_ROTATE:
@@ -285,7 +285,7 @@ def chain_seeds(
 def slots_identical(a: Group, b: Group) -> bool:
     """兩組的展開槽位是否完全相同——格數、每格代碼、每格是否為休。
 
-    「接續上月填入」只在這個函式回 True 時可用（DEVELOPER §4）。
+    「接續上月底填入」只在這個函式回 True 時可用（DEVELOPER §4）。
     ⚠️ 不是只比格數：休從第 6、7 格移到第 5、6 格時格數一樣，
     但配對完全不能沿用。
     """

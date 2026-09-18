@@ -174,7 +174,7 @@ class TabRules(QWidget):
         self.btn_delete_group = styleButton(QPushButton("刪除群組"), "danger")
         self.btn_check = styleButton(QPushButton("檢查規則"), "normal")
         self.btn_save = styleButton(QPushButton("儲存排序"), "primary")
-        self.btn_check.setToolTip("檢查所有群組：代碼是否撞號、輪番群組是否整組都是休")
+        self.btn_check.setToolTip("檢查所有群組：代碼是否衝突、輪番群組是否整組都是休")
         h = groups_card.header
         h.addStretch()
         for btn in (self.btn_add_group, self.btn_edit_group, self.btn_delete_group):
@@ -552,7 +552,7 @@ class TabRules(QWidget):
         except Exception as exc:
             reportError("規則有問題", exc, self)
             return
-        msgInfo("檢查完成", "所有群組檢查無誤：代碼沒有撞號，輪番群組都有人上班。", self)
+        msgInfo("檢查完成", "所有群組檢查無誤：代碼沒有衝突，輪番群組都有人上班。", self)
 
     # ── 槽位方塊 ────────────────────────────────────────────────
     def _currentGroup(self):

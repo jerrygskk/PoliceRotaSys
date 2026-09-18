@@ -2,7 +2,7 @@
 
 模板就是**設定**：想改就改、想刪就刪，沒有草稿／啟用／版號這回事。
 
-⚠️ 改模板**不會影響已經產生的月表**——月表在產出時就把當時的規則拷成
+⚠️ 改模板**不會影響已經產生的月表**——月表在產出時就把當時的規則複製成
 快照了（見 ``lib/plan.py``）。這也是這一版把「規則版本鎖死」整套拿掉的
 理由：舊月表不再指著模板，鎖就沒有存在的必要。
 """
@@ -375,7 +375,7 @@ def set_code_override(
 
 
 def check_template(conn: sqlite3.Connection, template_id: int) -> None:
-    """「檢查規則」鈕：跨群組檢查（撞號、整組都是休、空範圍）。有問題 raise TemplateError。"""
+    """「檢查規則」鈕：跨群組檢查（代碼衝突、整組都是休、空範圍）。有問題 raise TemplateError。"""
     if not group_rows(conn, template_id):
         raise TemplateError("這份模板還沒有任何群組")
     try:

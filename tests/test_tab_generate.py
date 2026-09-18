@@ -141,13 +141,13 @@ class TestTabGenerate(_TempDb):
         tab.cmb_month.setCurrentIndex(9)                      # 10 月已經過去
         with mock.patch.object(tab_generate, "confirmBox", return_value=False) as ask:
             tab._custom()
-        self.assertIn("此為歷史勤休表", ask.call_args.kwargs["informative"])
+        self.assertIn("此為歷史勤休預定表", ask.call_args.kwargs["informative"])
 
     def test_current_month_confirmation_has_no_past_note(self):
         self._make_october()
         with mock.patch.object(tab_generate, "confirmBox", return_value=False) as ask:
             self.tab._custom()
-        self.assertNotIn("歷史勤休表", ask.call_args.kwargs["informative"])
+        self.assertNotIn("歷史勤休預定表", ask.call_args.kwargs["informative"])
 
     # ── 刪除 ──
     def test_delete_asks_then_removes(self):
@@ -410,7 +410,7 @@ class TestPairingDialog(_TempDb):
         target = self.dlg._assign[1]
         self._type(0, self._name(target))
         self.assertEqual(self.dlg._assign[0], target)
-        self.assertIsNone(self.dlg._assign[1])       # 原本那格改成未配
+        self.assertIsNone(self.dlg._assign[1])       # 原本那格改成未分配
         self.assertIn(1, self.dlg._flash_rows)
 
     def test_clearing_the_text_unassigns_the_cell(self):
@@ -418,7 +418,7 @@ class TestPairingDialog(_TempDb):
         self._type(0, "")
         self.assertIsNone(self.dlg._assign[0])
 
-    # ── 右側名單：全部列出、已配變灰；點人名帶入目前那一格 ──
+    # ── 右側名單：全部列出、已配變灰；點人名填入目前那一格 ──
     def test_roster_keeps_assigned_people(self):
         self.fill_all()
         self.assertEqual(self.dlg.lst_roster.count(), len(self.dlg._members))

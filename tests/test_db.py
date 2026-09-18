@@ -163,7 +163,7 @@ class TestSeed(_DbTestCase):
         )
 
     def test_the_shift_note_is_stored_with_the_template(self):
-        """⚠️ 註記提到番號，換單位就不一樣，所以存在模板裡、隨月表拷進快照。"""
+        """⚠️ 註記提到番號，換單位就不一樣，所以存在模板裡、隨月表複製進快照。"""
         self.seed()
         note = self.conn.execute(
             "SELECT note FROM T_Group WHERE name = '劃假'"
@@ -194,11 +194,6 @@ class TestSettings(_DbTestCase):
 
 
 
-
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestOldDatabaseIsUpgraded(unittest.TestCase):
     """⚠️ 現場已在用的資料庫缺後來加的欄位，開庫時要補，不然整個程式開不起來。"""
 
@@ -222,3 +217,7 @@ class TestOldDatabaseIsUpgraded(unittest.TestCase):
             self.assertEqual(reverse, 0)
             expected = "above" if (mode, name) == ("fixed", "幹部") else "below"
             self.assertEqual(position, expected, name)
+
+
+if __name__ == "__main__":
+    unittest.main()

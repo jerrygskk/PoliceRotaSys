@@ -7,7 +7,7 @@ pairing_dialog.py — 配對彈窗（產生月表「自訂起始」）
   左側  配對表：一列一格位（群組／格位／代碼／人員），人員欄是**唯讀下拉**
   右側  名單：列出全部在職人員，已配的變灰並標在哪一格；**點人名＝帶進左側目前那一格**
         （目前那一格＝最後點過或正在打字的人員欄，淡藍底標示）
-  下方  接續上月填入／全部清空　　取消／確定
+  下方  接續上月底填入／全部清空　　取消／確定
 
 人員欄是**可打字篩選下拉**，用公版 `widgets.makeFilterCombo`（維護者 2026-09-16 裁示，
 原規格禁止可打字；PoliceDocSys 補強後六個彈窗已在用）。本彈窗多了「選人會清空別格」的
@@ -15,7 +15,7 @@ pairing_dialog.py — 配對彈窗（產生月表「自訂起始」）
 
   1. **只有確實選中名字才寫進格位**（點候選、點下拉項目，或完整打出姓名後按 Enter／
      離開欄位）。打字過程中資料完全不動——否則打到一半就把別人的格位清掉。
-     清空欄位文字後按 Enter／離開＝把這格改成未配。
+     清空欄位文字後按 Enter／離開＝把這格改成未分配。
   2. **確定前整張表檢查**：打了字卻沒選中的格標紅、不准送出（`checkFilterCombos`）。
 
 ⚠️ 下拉不吃滾輪：捲表格時游標一定會滑過下拉，吃了滾輪就是靜默換人。
@@ -40,14 +40,14 @@ from .ui_common import confirmBox, msgInfo, msgWarning, reportError, styleButton
 from .widgets import checkFilterCombos, installComboWheelGuard, makeFilterCombo
 
 _GROUP_COL, _SEQ_COL, _CODE_COL, _PERSON_COL = range(4)
-_HEADERS = ("群組", "格位", "代碼", "人員")
+_HEADERS = ("群組", "順序", "代碼", "人員")
 
 _COLOR_FLASH = QColor("#fff3cd")     # 被清空的那一格短暫標黃，與「自訂」方塊同色系
 _COLOR_MISSING = QColor("#fde8e8")   # 按確定時還沒配的格
 _COLOR_ACTIVE = QColor("#e3edf8")    # 目前那一格（點名單會帶進這裡），與提示條同色系
 _COLOR_REST_TEXT = QColor("#b42318")
 _COLOR_TAKEN_TEXT = QColor("#8e8e93")  # 名單上已配的人
-_COLOR_NAME_TEXT = QColor("#1c1c1e")   # 名單上未配的人（公版內文色）
+_COLOR_NAME_TEXT = QColor("#1c1c1e")   # 名單上未分配的人（公版內文色）
 _FLASH_MS = 2000
 ROSTER_W = 380
 _ROW_H = 44
@@ -75,7 +75,7 @@ class PairingDialog(QDialog):
     """結果：accept 後讀 ``template_id`` 與 ``seeds``（``{group_id: {member_id: slot_seq}}``）。"""
 
     def __init__(self, db_path, year, month, edit_existing=False, parent=None):
-        """edit_existing=True：修改已產生的月份——預選該月用的模板並帶入現有配對。"""
+        """edit_existing=True：修改已產生的月份——預選該月用的模板並填入現有配對。"""
         super().__init__(parent)
         self.db_path = db_path
         self.year, self.month = year, month
@@ -157,7 +157,7 @@ class PairingDialog(QDialog):
         root.addLayout(middle, 1)
 
         bottom = QHBoxLayout()
-        self.btn_previous = styleButton(QPushButton("接續上月填入"), "normal")
+        self.btn_previous = styleButton(QPushButton("接續上月底填入"), "normal")
         self.btn_clear = styleButton(QPushButton("全部清空"), "danger")
         for btn in (self.btn_previous, self.btn_clear):
             btn.setAutoDefault(False)
@@ -285,7 +285,7 @@ class PairingDialog(QDialog):
         self._commit(row, self._combos[row].currentData())
 
     def _onEditingFinished(self, row):
-        """Enter／離開欄位：完整打出姓名就選中；清空就改成未配；打一半的不動資料。"""
+        """Enter／離開欄位：完整打出姓名就選中；清空就改成未分配；打一半的不動資料。"""
         if self._syncing:
             return
         combo = self._combos[row]
@@ -303,7 +303,7 @@ class PairingDialog(QDialog):
         if mid is not None:
             for other, assigned in enumerate(self._assign):
                 if other != row and assigned == mid:
-                    # 選到已配過的人：原本那格改成未配，不跳確認，短暫標黃讓視線跟得上
+                    # 選到已配過的人：原本那格改成未分配，不跳確認，短暫標黃讓視線跟得上
                     self._assign[other] = None
                     self._flash(other)
                     changed.add(other)
@@ -377,7 +377,7 @@ class PairingDialog(QDialog):
         """點名單上的人名＝帶進左側目前那一格（已配在別格的人會從原格移過來）。"""
         row = self._active_row
         if row is None or not 0 <= row < len(self._combos):
-            self.lbl_people.setText("請先點選左側要填入的格位")
+            self.lbl_people.setText("請先點選左側要填入人員的番號")
             return
         self._commit(row, item.data(Qt.UserRole))
         # 使用者可能點完格位又把表格捲走了：把畫面拉回剛填入的那一格，讓他看到填到哪裡。
@@ -403,8 +403,8 @@ class PairingDialog(QDialog):
         empty = sum(1 for mid in self._assign if mid is None)
         left = sum(1 for mid, _name in self._members if mid not in owner)
         self.lbl_total.setText(f"在職 {len(self._members)} 人")
-        self.lbl_slots.setText(f"共 {len(self._rows)} 格，尚有 {empty} 格未配")
-        self.lbl_people.setText(f"尚有 {left} 人未配；點人名帶入左側格位" if left
+        self.lbl_slots.setText(f"共 {len(self._rows)} 格，尚有 {empty} 格未分配")
+        self.lbl_people.setText("還有沒有分配的人員，請先完成分配" if left
                                 else "所有人都已配對")
         # 全部人都列出來，不因為配了就消失；已配的變灰並標在哪一格。
         # ⚠️ 就地更新文字與顏色，不要 clear() 重建——重建會把名單捲回最上面，
@@ -429,21 +429,21 @@ class PairingDialog(QDialog):
                           confirm_text="繼續", default_confirm=False, parent=self)
 
     def _prefillExisting(self):
-        """修改已產生的月份：帶入這個月現有的站位。對不上的群組留空，提示在名單上方。"""
+        """修改已產生的月份：填入這個月現有的番號。對不上的群組留空，提示在名單上方。"""
         try:
             with opened(self.db_path) as conn:
                 seeds, skipped = plan.prefill_from_month(
                     conn, self.year, self.month, self.currentTemplateId())
         except Exception as exc:
-            reportError("無法帶入現有配對", exc, self)
+            reportError("無法填入現有配對", exc, self)
             return
         self._setAssignments(seeds)
         if skipped:
-            self.lbl_people.setText("未帶入（格位或輪休已改）：" + "、".join(skipped))
+            self.lbl_people.setText("以下群組因設定變更未填入：" + "、".join(skipped))
 
     def _fillFromPrevious(self):
         tid = self.currentTemplateId()
-        if tid is None or not self._confirmOverwrite("接續上月填入"):
+        if tid is None or not self._confirmOverwrite("接續上月底填入"):
             return
         try:
             with opened(self.db_path) as conn:
@@ -454,7 +454,7 @@ class PairingDialog(QDialog):
         self._setAssignments(seeds)
         if skipped:
             msgInfo("部分群組未填入",
-                    "以下群組與上月的格位或輪休不同，無法沿用上月站位，請自行配對：\n"
+                    "以下群組與上月的番號或輪休不同，無法沿用上月番號，請自行配對：\n"
                     + "、".join(skipped), self)
 
     def _clearAll(self):
@@ -484,7 +484,7 @@ class PairingDialog(QDialog):
             shown = "、".join(self._slotLabel(r) for r in rows[:5])
             more = f" 等 {len(rows)} 格" if len(rows) > 5 else ""
             msgWarning("姓名不在名單中",
-                       f"以下格位輸入的姓名沒有選中名單裡的人，請重新選取：{shown}{more}", self)
+                       f"以下番號欄所輸入的姓名，不是候選名單裡的人，請重新選取：{shown}{more}", self)
             return
         missing = self.missingRows()
         if missing:
@@ -494,7 +494,7 @@ class PairingDialog(QDialog):
             self.tbl.scrollToItem(self.tbl.item(missing[0], _SEQ_COL))
             shown = "、".join(self._slotLabel(r) for r in missing[:5])
             more = f" 等 {len(missing)} 格" if len(missing) > 5 else ""
-            msgWarning("尚未配對完成", f"還有格位沒有配人：{shown}{more}", self)
+            msgWarning("尚未配對完成", f"還有番號沒有配人：{shown}{more}", self)
             return
         seeds = {}
         for (gid, _name, seq, _code, _rest), mid in zip(self._rows, self._assign):

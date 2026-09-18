@@ -110,7 +110,7 @@ class GroupDialog(QDialog):
         self.w_header.setChecked(bool(ex["header_before"]) if self.is_edit else True)
         form.addRow("版面：", self.w_header)
         self.w_reverse = QCheckBox("反向排序（右往左）")
-        self.w_reverse.setToolTip("勾選後這個群組在月表上的欄位左右顛倒，第 1 格排在最右邊")
+        self.w_reverse.setToolTip("勾選後這個群組在月表上顯示的欄位會逆向排列，第 1 格排在最右邊")
         self.w_reverse.setChecked(bool(ex["reverse_order"]) if self.is_edit else False)
         form.addRow("", self.w_reverse)
         # 代號位置：只有固定番類型用得到（合併格裡代號橫排在名字下方或上方）

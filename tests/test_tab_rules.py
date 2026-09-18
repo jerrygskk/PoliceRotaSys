@@ -230,7 +230,7 @@ class TestTabRules(_TempDb):
 
     def test_check_reports_overlapping_codes(self):
         with opened(self.db) as conn:
-            template.add_group(conn, self.tpl, "撞號組", MODE_ROTATE, "18-25")
+            template.add_group(conn, self.tpl, "衝突組", MODE_ROTATE, "18-25")
         with mock.patch.object(tab_rules, "reportError") as warn:
             self.tab._check()
         warn.assert_called_once()

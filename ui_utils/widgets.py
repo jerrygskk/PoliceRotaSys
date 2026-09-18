@@ -33,7 +33,7 @@ class _ComboWheelGuard(QObject):
 
 
 def installComboWheelGuard(combo, forward_to=None):
-    """讓 combo 不再因滾輪改值。回傳 filter（掛在 combo 底下，不必另外保存）。"""
+    """讓 combo 不再因滾輪改值。回傳 filter（掛在 combo 底下，不必另外儲存）。"""
     guard = _ComboWheelGuard(combo, forward_to)
     combo.installEventFilter(guard)
     return guard

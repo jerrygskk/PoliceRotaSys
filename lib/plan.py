@@ -7,7 +7,7 @@
   接續上月  沿用上個月的規則與名單，番號從上月最後一天接著推
   自訂起始  選一份模板，承辦人自己指定 1 日的起始格位
 
-⚠️ **月表一旦產生就跟設定區脫勾**：規則與姓名在產出當下拷成 ``snapshot``
+⚠️ **月表一旦產生就跟設定區脫勾**：規則與姓名在產出當下複製成 ``snapshot``
 存進去。之後改模板、改名字、刪人，都不會動到已經產生的月表；重印一律讀
 快照，不重算、不回頭讀設定區。
 """
@@ -122,7 +122,7 @@ def snapshot_to_group(data: dict) -> Group:
 def build_snapshot(
     conn: sqlite3.Connection, template_id: int, seeds: dict[int, dict[int, int]]
 ) -> dict:
-    """依模板與配對拷出一份快照。``seeds`` 是 ``{group_id: {member_id: slot_seq}}``。"""
+    """依模板與配對另存一份快照。``seeds`` 是 ``{group_id: {member_id: slot_seq}}``。"""
     tpl = template.get_template(conn, template_id)
     rows = template.group_rows(conn, template_id)
     groups = {g.name: g for g in template.load_groups(conn, template_id)}
@@ -262,7 +262,7 @@ def _assert_seeds_complete(
         for slot_seq in members.values():
             if not 1 <= slot_seq <= cycle_len:
                 raise PlanError(
-                    f"「{row['name']}」的格位 {slot_seq} 超出範圍"
+                    f"「{row['name']}」的欄位 {slot_seq} 超出範圍"
                     f"（共 {cycle_len} 格）"
                 )
 
@@ -287,11 +287,11 @@ def _assert_seeds_complete(
         if missing:
             shown = "、".join(str(seq) for seq in missing[:5])
             more = f" 等 {len(missing)} 格" if len(missing) > 5 else ""
-            raise PlanError(f"「{row['name']}」還有格位沒配人：第 {shown} 格{more}")
+            raise PlanError(f"「{row['name']}」還有番號沒配人：第 {shown} 格{more}")
 
 
 # --------------------------------------------------------------------------
-# 配對彈窗的預填（不寫資料庫，只算出建議的配對給畫面帶入）
+# 配對彈窗的預填（不寫資料庫，只算出建議的配對給畫面填入）
 # --------------------------------------------------------------------------
 
 def active_members(conn: sqlite3.Connection) -> list[sqlite3.Row]:
@@ -315,10 +315,10 @@ def pairable_groups(conn: sqlite3.Connection, template_id: int) -> list[tuple[sq
 def _prefill_from_snapshot(
     conn: sqlite3.Connection, snapshot: dict, template_id: int
 ) -> tuple[dict[int, dict[int, int]], list[str]]:
-    """把一份快照的站位套到模板上。回傳 ``(配對, 沒辦法沿用的群組名稱)``。
+    """把一份快照的番號套到模板上。回傳 ``(配對, 沒辦法沿用的群組名稱)``。
 
     ⚠️ 只沿用**名稱相同、且每格代碼與休完全一樣**的群組。格數一樣但休移了位，
-    站位就完全不能沿用——硬套的話月表印出來看不出錯。對不上的群組整組留空，
+    番號就完全不能沿用——硬套的話月表印出來看不出錯。對不上的群組整組留空，
     名稱回傳給畫面告訴承辦人。
 
     人用**姓名**對回目前的在職名單：快照裡存的是姓名，離職或改名的人對不到，
@@ -349,14 +349,14 @@ def _prefill_from_snapshot(
 def prefill_from_previous(
     conn: sqlite3.Connection, year: int, month: int, template_id: int
 ) -> tuple[dict[int, dict[int, int]], list[str]]:
-    """「接續上月填入」：把上月推到本月 1 日的站位，套到這份模板上。"""
+    """「接續上月底填入」：把上月推到本月 1 日的番號，套到這份模板上。"""
     return _prefill_from_snapshot(conn, chained_snapshot(conn, year, month), template_id)
 
 
 def prefill_from_month(
     conn: sqlite3.Connection, year: int, month: int, template_id: int
 ) -> tuple[dict[int, dict[int, int]], list[str]]:
-    """修改已產生的月份：配對彈窗帶入這個月現有的站位（不往後推）。"""
+    """修改已產生的月份：配對彈窗填入這個月現有的番號（不往後推）。"""
     return _prefill_from_snapshot(conn, load_snapshot(conn, year, month), template_id)
 
 

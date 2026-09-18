@@ -10,7 +10,7 @@
 
 已產生的月份（維護者裁示：軟擋，不硬擋）：
   兩顆產生鈕照樣能按，先確認「要覆蓋嗎」；已經過去的月份確認框多一句提醒。
-  自訂起始覆蓋時，配對彈窗帶入這個月現有的配對，只改要改的格。
+  自訂起始覆蓋時，配對彈窗填入這個月現有的配對，只改要改的格。
   「刪除月表」一樣先確認。
 
 匯出：xlsx 與 pdf 一次產出，檔名「115年10月輪番表」。預設存到桌面，確認框可選
@@ -114,7 +114,7 @@ class TabGenerate(QWidget):
         self.btn_export = styleButton(QPushButton("匯出"), "normal")
         self.btn_delete = styleButton(QPushButton("刪除月表"), "danger")
         self.btn_chain.setToolTip("沿用上個月的規則與名單，番號從上月最後一天接著推")
-        self.btn_custom.setToolTip("選一份模板，自己配好每一格 1 日的站位")
+        self.btn_custom.setToolTip("選一份模板，自己配好每一格 1 日的番號")
         self.btn_export.setToolTip("產出 Excel 與 PDF 兩個檔案")
 
         h = head.header
@@ -187,7 +187,7 @@ class TabGenerate(QWidget):
 
     def _pastNote(self, year, month, action="重新產生覆蓋原資料"):
         """過去月份的提醒（維護者 2026-09-16 定稿措辭）：覆蓋與刪除各用自己的動作字眼。"""
-        return (f"\n此為歷史勤休表，請確認是否要{action}。"
+        return (f"\n此為歷史勤休預定表，請確認是否要{action}。"
                 if self.isPast(year, month) else "")
 
     def _confirmOverwrite(self, year, month, how):

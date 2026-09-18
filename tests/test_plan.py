@@ -99,7 +99,7 @@ class TestCreatePlan(_PlanTestCase):
         """⚠️ 漏一格，印出來那一欄就是空的，承辦人不知道是誰的錯。"""
         short = self.full_seeds()
         short[self.gid["大輪番"]].pop(self.members[0])
-        with self.assertRaisesRegex(plan.PlanError, "還有格位沒配人"):
+        with self.assertRaisesRegex(plan.PlanError, "還有番號沒配人"):
             self.make_plan(seeds=short)
 
     def test_a_group_with_nobody_at_all_is_refused(self):
@@ -392,14 +392,14 @@ class TestBuildSheetFor(_PlanTestCase):
 
 
 class TestPairingPrefill(_PlanTestCase):
-    """配對彈窗的「接續上月填入」（只算建議，不寫資料庫）。"""
+    """配對彈窗的「接續上月底填入」（只算建議，不寫資料庫）。"""
 
     def test_previous_month_is_required(self):
         with self.assertRaisesRegex(plan.PlanError, "沒有月表可以接續"):
             plan.prefill_from_previous(self.conn, 2026, 10, self.tpl)
 
     def test_prefill_matches_what_chaining_would_produce(self):
-        """沒改模板時，接續上月填入＝直接按「接續上月」的站位。"""
+        """沒改模板時，接續上月底填入＝直接按「接續上月」的番號。"""
         self.make_plan(2026, 10)
         seeds, skipped = plan.prefill_from_previous(self.conn, 2026, 11, self.tpl)
         self.assertEqual(skipped, [])
@@ -415,7 +415,7 @@ class TestPairingPrefill(_PlanTestCase):
             )
 
     def test_group_with_moved_rest_is_skipped(self):
-        """⚠️ 格數一樣但休移了位，站位不能沿用——整組留空並回報名稱。"""
+        """⚠️ 格數一樣但休移了位，番號不能沿用——整組留空並回報名稱。"""
         self.make_plan(2026, 10)
         template.toggle_rest(self.conn, self.gid["大輪番"], 1)
         seeds, skipped = plan.prefill_from_previous(self.conn, 2026, 11, self.tpl)
@@ -424,7 +424,7 @@ class TestPairingPrefill(_PlanTestCase):
         self.assertEqual(len(seeds[self.gid["固定番"]]), 8)
 
     def test_prefill_from_month_uses_the_month_as_is(self):
-        """修改已產生的月份：帶入的是這個月現有的站位，不往後推。"""
+        """修改已產生的月份：填入的是這個月現有的番號，不往後推。"""
         seeds = self.full_seeds(rotate_start=7)
         self.make_plan(2026, 10, seeds=seeds)
         prefilled, skipped = plan.prefill_from_month(self.conn, 2026, 10, self.tpl)
