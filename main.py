@@ -24,7 +24,9 @@ from tabs.tab_generate import TabGenerate
 from tabs.tab_maintenance import TabMaintenance
 from tabs.tab_personnel import TabPersonnel
 from tabs.tab_rules import TabRules
-from ui_utils import attachHelpButton, installDateEditInputGuard, msgCritical
+from ui_utils import (
+    attachHelpButton, installChineseTranslator, installDateEditInputGuard, msgCritical,
+)
 from ui_utils.loading_screen import LoadingScreen
 
 APP_NAME = "勤休預定表產生器"
@@ -113,6 +115,7 @@ def main():
     setup_logging(os.path.join(os.path.dirname(db_path), LOG_NAME))
 
     app = QApplication(sys.argv)
+    installChineseTranslator(app)
     icon_path = resource_path("res/buttons/police_badge.svg")
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))

@@ -599,6 +599,8 @@ gh release upload "v$version" dist/PoliceRotaSys.exe dist/Quick_Start.pdf
 QML／Quick、PDF 閱讀模組、網路、多餘圖片格式（含 `qjpeg`）與語系檔、備用顯示外掛、打包機 PATH 上誤撿的
 Git OpenSSL；標準庫的 `ssl`／`_hashlib`（程式不連網）、`lzma`／`bz2`（xlsx 只用 deflate）、
 `defusedxml`（本程式只寫檔，它會拉進 xmlrpc、pydoc）。
+⚠️ 語系檔只保留 `zh_TW`：開機時 `installChineseTranslator`（`ui_utils/widgets.py`）載入 `qtbase_zh_TW.qm`，
+捲軸／輸入框右鍵選單與標準按鈕才會是中文；砍掉它打包版會退回英文，原始碼跑卻正常。
 
 ⚠️ 評估過**不可砍**：`qmodernwindowsstyle`（底層外觀會變）、`unicodedata`（`traceback` 會用，寫錯誤紀錄時
 再出錯就查不到）、三份重複的 VC 執行階段 DLL（PySide6／shiboken 各自從自己的資料夾載入）、

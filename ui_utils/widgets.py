@@ -1,4 +1,9 @@
-from PySide6.QtCore import Qt, QDate, QObject, QEvent, QTimer, Signal, QRegularExpression
+import os
+
+from PySide6.QtCore import (
+    Qt, QDate, QObject, QEvent, QTimer, Signal, QRegularExpression,
+    QLibraryInfo, QTranslator,
+)
 from PySide6.QtWidgets import (
     QComboBox, QCompleter, QLabel, QLineEdit, QCalendarWidget, QDateEdit,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem,
@@ -8,6 +13,7 @@ from PySide6.QtGui import (
     QRegularExpressionValidator, QStandardItemModel, QStandardItem,
 )
 
+from lib.resource_path import resource_path
 from lib.theme import HINT_COLOR, TEXT_COLOR
 
 
@@ -183,6 +189,47 @@ def installDateEditInputGuard(app=None):
 
 # 舊名保留：原本只擋滾輪，2026-08-04 起一併擋調整鍵。
 installDateEditWheelGuard = installDateEditInputGuard
+
+
+QT_ZH_TW_QM = "qtbase_zh_TW.qm"
+
+
+def _qtTranslationDirs():
+    """Qt 翻譯檔候選目錄：PySide6 安裝目錄 → 打包後 exe 內。"""
+    dirs = []
+    try:
+        d = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+        if d:
+            dirs.append(d)
+    except Exception:
+        pass
+    try:
+        d = resource_path("PySide6/translations")
+        if d and d not in dirs:
+            dirs.append(d)
+    except Exception:
+        pass
+    return dirs
+
+
+def installChineseTranslator(app):
+    """載入 Qt 官方繁中翻譯，讓捲軸／輸入框右鍵選單、標準按鈕等內建文字顯示中文。
+
+    找不到或載入失敗一律略過，不影響開機。translator 掛在 app 上保留參照，
+    否則被 Python 回收後翻譯就消失。打包時由 tools/pyi_prune.py 保留 zh_TW 語系檔。
+    """
+    for directory in _qtTranslationDirs():
+        qm = os.path.join(directory, QT_ZH_TW_QM)
+        if not os.path.isfile(qm):
+            continue
+        try:
+            translator = QTranslator(app)
+            if translator.load(qm) and app.installTranslator(translator):
+                app._qtbase_zh_tw_translator = translator
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def setupDateEditToToday(date_edit):
