@@ -576,14 +576,13 @@ python -m PyInstaller --clean --noconfirm PoliceRotaSys.spec
 python tools/gen_quickstart.py
 ```
 
-發版時從 `lib.version.__version__` 取得版號，直接產生帶版號的 release 檔名，並把 exe 與 PDF
-上傳到同一個 release：
+發版時把 exe 與 PDF 上傳到同一個 release。⚠️ **附件檔名固定為 `PoliceRotaSys.exe` 與
+`Quick_Start.pdf`，不加版號**（維護者裁示；版號看 release 標題即可）：
 
 ```powershell
 $version = python -c "from lib.version import __version__; print(__version__)"
-$quickStart = "dist/PoliceRotaSys_Quick_Start_v$version.pdf"
-python tools/gen_quickstart.py $quickStart
-gh release upload "v$version" dist/PoliceRotaSys.exe $quickStart
+python tools/gen_quickstart.py dist/Quick_Start.pdf
+gh release upload "v$version" dist/PoliceRotaSys.exe dist/Quick_Start.pdf
 ```
 
 上傳前仍須目視兩頁，確認沒有缺字、文字溢出或不自然分頁。產生器成功訊息會列出實際字型、
