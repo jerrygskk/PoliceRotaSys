@@ -1,6 +1,6 @@
 """環境契約：釘住產品 runtime 相依是一份封閉清單。
 
-CLAUDE.md §B：產品 runtime 只能有 PySide6 與 openpyxl。多一個套件就多一段
+AGENTS.md §B：產品 runtime 只能有 PySide6 與 openpyxl。多一個套件就多一段
 開機解壓與載入時間，而開啟速度是刻意付出代價換來的。
 
 ⚠️ 這支測試守的是**分界**，不是版本號。要加新的 runtime 相依，先問維護者；
@@ -68,7 +68,7 @@ class TestRuntimeDependencies(unittest.TestCase):
         self.assertEqual(listed, ALLOWED)
 
     def test_reportlab_is_not_imported(self):
-        """PDF 走 QPdfWriter；reportlab 是被明確排除的（CLAUDE.md §B）。
+        """PDF 走 QPdfWriter；reportlab 是被明確排除的（AGENTS.md §B）。
 
         ⚠️ 檢查 import 而不是純文字搜尋——註解裡寫「不用 reportlab」會被
         文字搜尋誤判成違規（第一版就這樣自己抓到自己）。

@@ -47,7 +47,7 @@ tests/test_table_col_widths.py                 ← LAY-15 的回歸網
 
 ## 三、搬規則（最值錢的部分）
 
-本專案的 `CLAUDE.md` 與（待建的）`PITFALLS.md` 應**從 PoliceDocSys 裁剪而來，
+本專案的 `AGENTS.md` 與（待建的）`PITFALLS.md` 應**從 PoliceDocSys 裁剪而來，
 不要重寫**。
 
 `PITFALLS.md` 的 UI／QSS／QTW／LAY／TAB 五組幾乎整包可用——全是 PySide6 通病，

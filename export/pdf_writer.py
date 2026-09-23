@@ -5,7 +5,7 @@
 ⚠️ **X 軸是人名（欄），Y 軸是日期（列）**。第一版做反了，見 layout_model 的說明。
 
 ⚠️ **用 QPdfWriter 而不是 reportlab**：PySide6 已經在包裡，PDF 等於免費附贈；
-多拉一個套件進來只是多一段開機解壓時間（CLAUDE.md §B 的封閉相依清單）。
+多拉一個套件進來只是多一段開機解壓時間（AGENTS.md §B 的封閉相依清單）。
 
 ⚠️ 匯出 PDF 不需要完整的 QApplication，但**需要 QGuiApplication** 才能量字。
 本模組自己確保有一個（離線環境請設 ``QT_QPA_PLATFORM=offscreen``）。

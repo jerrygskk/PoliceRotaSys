@@ -1,4 +1,4 @@
-# 產品 runtime 相依：封閉清單（CLAUDE.md §B）。
+# 產品 runtime 相依：封閉清單（AGENTS.md §B）。
 # ⚠️ 要加東西一律先問維護者——多一個套件就多一段開機解壓與載入時間。
 # PDF 走 Qt 的 QPdfWriter，不引入 reportlab。
 #
