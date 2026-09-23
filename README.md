@@ -8,7 +8,7 @@
   <img src="docs/img/01-month-preview.png?v=0.1.2" alt="產生月表主畫面，顯示已產生月份與完整月表預覽" width="900">
 </p>
 
-`Windows` ・ `免安裝單一執行檔` ・ `Excel 與 PDF 同時輸出` ・ 目前版本 **v0.1.2 beta**
+`Windows` ・ `免安裝單一執行檔` ・ `Excel 與 PDF 同時輸出` ・ 目前版本 **v1.0.0**
 
 ---
 
