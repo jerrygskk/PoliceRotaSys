@@ -17,6 +17,10 @@ _BTN_DISABLED = "QPushButton:disabled { background-color: #e5e5ea; color: #b0b0b
 BTN_CONFIRM  = f"QPushButton {{ background-color: #D0ECF5; color: #000000; {_BTN_BASE} }} QPushButton:hover {{ background-color: #B8D8E8; }} {_BTN_DISABLED}"
 BTN_DANGER   = f"QPushButton {{ background-color: #F5D4D0; color: #000000; {_BTN_BASE} }} QPushButton:hover {{ background-color: #E0BDB8; }} {_BTN_DISABLED}"
 BTN_CANCEL   = f"QPushButton {{ background-color: #F2F2F7; color: #000000; {_BTN_BASE} }} QPushButton:hover {{ background-color: #E5E5EA; }} {_BTN_DISABLED}"
+# 「－」「＋」這類單字小鈕：灰色同 BTN_CANCEL，只放寬度限制（同 Lottery539 的加減鈕）
+BTN_STEP     = ("QPushButton { background-color: #F2F2F7; color: #000000; border-radius: 6px;"
+                " padding: 4px 8px; min-width: 36px; font-weight: bold; }"
+                f" QPushButton:hover {{ background-color: #E5E5EA; }} {_BTN_DISABLED}")
 
 # 分頁上的按鈕列：同排一樣高、間距一致（按鈕只放文字，不加符號或圖示）
 BTN_ROW_SPACING = 12

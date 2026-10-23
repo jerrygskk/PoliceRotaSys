@@ -247,15 +247,59 @@ class TestTabGenerate(_TempDb):
         warn.assert_called_once()
         picker.getExistingDirectory.assert_not_called()
 
-    def _wheel(self, widget, notches):
+    def _wheel(self, widget, notches, modifiers=Qt.ControlModifier):
         vp = widget.viewport()
         pos = QPointF(vp.width() / 2, vp.height() / 2)
         event = QWheelEvent(pos, vp.mapToGlobal(pos), QPoint(0, 0), QPoint(0, 120 * notches),
-                            Qt.NoButton, Qt.NoModifier, Qt.NoScrollPhase, False)
+                            Qt.NoButton, modifiers, Qt.NoScrollPhase, False)
         QApplication.sendEvent(vp, event)
 
+    def _showPlan(self):
+        tpl, seeds = self.full_seeds()
+        with opened(self.db) as conn:
+            plan.create_plan(conn, 2026, 10, tpl, seeds)
+        self.tab.resize(1400, 760)
+        self.tab.show()
+        self.tab.refresh()
+        _app.processEvents()
+        return self.tab.preview
+
+    def test_plain_wheel_scrolls_instead_of_zooming(self):
+        """不按 Ctrl 的滾輪是上下捲動，比例不變。"""
+        preview = self._showPlan()
+        start = preview.zoom()
+        bar = preview.verticalScrollBar()
+        self._wheel(preview, -3, Qt.NoModifier)
+        self.assertAlmostEqual(preview.zoom(), start)
+        self.assertGreater(bar.value(), 0)
+
+    def test_zoom_controls_step_by_ten_percent(self):
+        """預設顯示 100%（左右填滿）；－／＋ 跳到 10% 整數倍，比例框可直接輸入。"""
+        preview = self._showPlan()
+        self.assertEqual(self.tab.txt_zoom.text(), "100%")
+        self.tab.btn_zoom_in.click()
+        self.assertEqual(preview.percent(), 110)
+        self.tab.btn_zoom_out.click()
+        self.tab.btn_zoom_out.click()
+        self.assertEqual(preview.percent(), 90)
+        self.tab.txt_zoom.setText("93")
+        self.tab.txt_zoom.editingFinished.emit()
+        self.assertEqual(self.tab.txt_zoom.text(), "93%")
+        self.tab.btn_zoom_in.click()
+        self.assertEqual(preview.percent(), 100)
+        self.tab.txt_zoom.setText("1")                   # 低於下限：夾在完整塞進
+        self.tab.txt_zoom.editingFinished.emit()
+        self.assertEqual(preview.zoom(), 1.0)
+        self.assertFalse(self.tab.btn_zoom_out.isEnabled())
+
+    def test_zoom_controls_disabled_without_a_sheet(self):
+        self.tab.refresh()
+        self.assertFalse(self.tab.txt_zoom.isEnabled())
+        self.assertFalse(self.tab.btn_zoom_in.isEnabled())
+        self.assertFalse(self.tab.btn_zoom_out.isEnabled())
+
     def test_preview_zooms_with_the_wheel_within_limits(self):
-        """預設左右填滿（上下出捲軸）；滾輪最小到完整塞進、最大到底圖原始解析度。"""
+        """預設左右填滿（上下出捲軸）；Ctrl＋滾輪最小到完整塞進、最大到底圖原始解析度。"""
         tpl, seeds = self.full_seeds()
         with opened(self.db) as conn:
             plan.create_plan(conn, 2026, 10, tpl, seeds)

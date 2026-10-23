@@ -23,9 +23,10 @@
 import os
 from datetime import date
 
-from PySide6.QtCore import QStandardPaths
+from PySide6.QtCore import QRegularExpression, QStandardPaths, Qt
+from PySide6.QtGui import QRegularExpressionValidator
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QLabel, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QFileDialog, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
 from export import pdf_writer, xlsx_writer
@@ -38,6 +39,7 @@ from ui_utils import (
 from ui_utils.card import Card, cardHint
 from ui_utils.pairing_dialog import PairingDialog, rocYear
 from ui_utils.sheet_preview import SheetPreview
+from ui_utils.ui_common import BTN_STEP
 
 YEARS_BEFORE = 1       # 年份下拉：今年往前 1 年（補產上月跨年用）
 YEARS_AFTER = 1        # 往後 1 年（12 月排明年 1 月用）
@@ -135,6 +137,25 @@ class TabGenerate(QWidget):
 
         preview_card = Card("預覽")
         self.preview = SheetPreview()
+        self.preview.setFocusPolicy(Qt.StrongFocus)   # 點過預覽後方向鍵、PageUp／PageDown 直接捲動
+        # 比例「－ 100% ＋」（比照 Lottery539 開獎單；100%＝左右填滿，可直接打數字按 Enter）
+        self.btn_zoom_out, self.btn_zoom_in = QPushButton("−"), QPushButton("＋")
+        self.txt_zoom = QLineEdit()
+        self.txt_zoom.setValidator(QRegularExpressionValidator(QRegularExpression(r"\d{1,3}%?"), self.txt_zoom))
+        self.txt_zoom.setAlignment(Qt.AlignCenter)
+        self.txt_zoom.setFocusPolicy(Qt.ClickFocus)  # 初始焦點不停在輸入框，點了才能打字
+        self.txt_zoom.setFixedWidth(self.txt_zoom.fontMetrics().horizontalAdvance("000%") + 28)
+        self.txt_zoom.editingFinished.connect(self._zoomTyped)
+        ph = preview_card.header
+        ph.addWidget(cardHint("Ctrl＋滾輪縮放"))
+        ph.addStretch()
+        for w, sign in ((self.btn_zoom_out, -1), (self.txt_zoom, 0), (self.btn_zoom_in, 1)):
+            if sign:
+                w.setStyleSheet(BTN_STEP)
+                w.setFocusPolicy(Qt.NoFocus)
+                w.clicked.connect(lambda _=False, s=sign: self.preview.step(s))
+            ph.addWidget(w)
+        self.preview.zoomChanged.connect(self._zoomChanged)
         preview_card.body.addWidget(self.preview, 1)
         root.addWidget(preview_card, 1)
 
@@ -176,6 +197,24 @@ class TabGenerate(QWidget):
         else:
             self.lbl_status.setText(f"已產生・{row['origin']}・{row['created_at'][:10]} 建立")
             self.preview.setSheet(sheet)
+
+    def _zoomChanged(self):
+        """比例改了：比例框顯示目前百分比，到上下限的那顆鈕反灰（點了也只是夾在範圍內，不另擋）。"""
+        has = self.preview.hasSheet()
+        self.txt_zoom.setEnabled(has)
+        if not self.txt_zoom.hasFocus():
+            self.txt_zoom.setText(f"{self.preview.percent()}%" if has else "")
+        self.btn_zoom_out.setEnabled(self.preview.canZoomOut())
+        self.btn_zoom_in.setEnabled(self.preview.canZoomIn())
+
+    def _zoomTyped(self):
+        """比例框打數字按 Enter（或離開）：照百分比縮放；空白或 0 恢復原本顯示。焦點回到預覽。"""
+        digits = self.txt_zoom.text().rstrip("%")
+        if digits and int(digits) and self.preview.hasSheet():
+            self.preview.setPercent(int(digits))
+        self.txt_zoom.clearFocus()
+        self.preview.setFocus()
+        self._zoomChanged()
 
     def _hasPlan(self, year, month):
         with opened(self.db_path) as conn:

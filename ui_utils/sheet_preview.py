@@ -7,16 +7,18 @@ sheet_preview.py — 月表預覽（產生月表分頁）
 做法是先把整張 A3 畫到一張固定大小的底圖上，再縮放到畫面。直接畫在元件上的話，
 框線寬度是以「頁面像素」算的，元件一小框線就糊成一片。底圖只在換月表時重畫。
 
-縮放（維護者 2026-09-16 要求）：
+縮放（維護者 2026-09-16 要求；2026-10-23 改比照 Lottery539 開獎單）：
   - 預設＝左右填滿預覽區，上下超出就出直向捲軸（維護者 2026-09-16 裁示）
+  - 比例以百分比顯示，**100%＝左右填滿**（維護者 2026-10-23 裁示）
   - 最小＝整張月表完整塞進目前的預覽區（依預覽區的寬與高算）
-  - 滾輪往上放大、往下縮小，以游標所在位置為中心；超出預覽區就出現捲軸
+  - 滾輪上下捲動；按住 Ctrl 才縮放，每格 10%，以游標所在位置為中心
+  - 「－」「＋」跳到上／下一個 10% 的整數倍，比例框可直接打數字（控制項在 tab_generate）
   - 最大＝底圖原始解析度（一個底圖像素對一個螢幕像素），再大字只會糊
   - 還沒動過滾輪時，視窗縮放一律維持左右填滿；動過之後維持同樣的放大倍率
   - 換月份回到預設（左右填滿、捲到最上面）
   - 放大後按住左鍵拖曳可上下左右移動畫面（游標變手掌）；完整顯示時沒東西可拖
 """
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtWidgets import QFrame, QScrollArea, QWidget
 
@@ -28,7 +30,7 @@ _PAGE_H = round(_PAGE_W * 297 / 420)
 _PAGE_MARGIN = 24          # 底圖四邊留白（對應 PDF 的 5mm 邊界，只求視覺相近）
 _SHADOW = QColor("#d1d1d6")
 _GAP = 8                   # 頁面與預覽區邊緣的留白（含陰影）
-ZOOM_STEP = 1.15           # 滾輪一格的放大倍率
+ZOOM_STEP = 10             # Ctrl＋滾輪一格、－／＋一次幾 %
 
 
 class _Canvas(QWidget):
@@ -55,7 +57,9 @@ class _Canvas(QWidget):
 
 
 class SheetPreview(QScrollArea):
-    """顯示一張月表；沒有月表時顯示提示文字。滾輪縮放。"""
+    """顯示一張月表；沒有月表時顯示提示文字。Ctrl＋滾輪縮放。"""
+
+    zoomChanged = Signal()     # 比例或可縮放範圍變了（比例框、－／＋ 據此更新）
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -64,7 +68,8 @@ class SheetPreview(QScrollArea):
         self._zoom = 1.0           # 相對於「完整塞進預覽區」的倍率
         self._scale = 1.0          # 底圖像素 → 畫面像素
         self._drag_from = None     # 拖曳起點（游標位置, 橫捲軸值, 直捲軸值）
-        self._fit_width = True     # 還沒用滾輪縮放過：一直維持左右填滿
+        self._fit_width = True     # 還沒縮放過：一直維持左右填滿
+        self._wheel_acc = 0        # Ctrl＋滾輪累計的滾動量
         self.setFrameShape(QFrame.NoFrame)
         self.setWidgetResizable(False)
         self.setAlignment(Qt.AlignCenter)
@@ -131,6 +136,26 @@ class SheetPreview(QScrollArea):
     def zoom(self):
         return self._zoom
 
+    def percent(self):
+        """目前比例，100%＝左右填滿。"""
+        return round(self._zoom / self.widthZoom() * 100)
+
+    def canZoomOut(self):
+        return self._image is not None and self._zoom > 1.0 + 1e-6
+
+    def canZoomIn(self):
+        return self._image is not None and self._zoom < self.maxZoom() - 1e-6
+
+    def setPercent(self, pct, anchor=None):
+        """照百分比縮放（100%＝左右填滿）；超出範圍夾在完整塞進與原始解析度之間。"""
+        self.setZoom(self.widthZoom() * pct / 100, anchor)
+
+    def step(self, sign, anchor=None):
+        """－／＋：跳到上／下一個 10% 的整數倍（目前 93% 按＋到 100%、按－到 90%）。"""
+        pct = self.percent()
+        pct = (pct // ZOOM_STEP + 1) * ZOOM_STEP if sign > 0 else (pct - 1) // ZOOM_STEP * ZOOM_STEP
+        self.setPercent(pct, anchor)
+
     def setZoom(self, zoom, anchor=None):
         """設定倍率（夾在 1 與上限之間）；anchor 是預覽區內的點，縮放後維持在同一位置。"""
         # ⚠️ 任何明確縮放都要先關掉「維持左右填滿」：縮小讓直向捲軸消失時預覽區會變寬，
@@ -139,6 +164,7 @@ class SheetPreview(QScrollArea):
         zoom = min(max(zoom, 1.0), self.maxZoom())
         if self._image is None or abs(zoom - self._zoom) < 1e-9:
             self._zoom = zoom
+            self.zoomChanged.emit()
             return
         hbar, vbar = self.horizontalScrollBar(), self.verticalScrollBar()
         if anchor is None:
@@ -163,6 +189,7 @@ class SheetPreview(QScrollArea):
         self._canvas.resize(size)
         self._canvas.update()
         self._updateCursor()
+        self.zoomChanged.emit()
 
     def canPan(self):
         """畫面大於預覽區（有捲軸）時才能拖。"""
@@ -180,12 +207,17 @@ class SheetPreview(QScrollArea):
 
     # ── 事件 ────────────────────────────────────────────────────
     def wheelEvent(self, event):
-        if self._image is None:
-            return super().wheelEvent(event)
-        steps = event.angleDelta().y() / 120
-        if steps:
-            self.setZoom(self._zoom * (ZOOM_STEP ** steps), event.position())
-        event.accept()
+        """滾輪上下捲動；按住 Ctrl 才是縮放，以游標為中心。"""
+        if self._image is not None and event.modifiers() & Qt.ControlModifier:
+            # 累計滾動量，滿一格（120）縮放一次：觸控板一次只送一小段，逐次都縮放會太快
+            self._wheel_acc += event.angleDelta().y()
+            while abs(self._wheel_acc) >= 120:
+                sign = 1 if self._wheel_acc > 0 else -1
+                self._wheel_acc -= sign * 120
+                self.step(sign, event.position())
+            event.accept()
+            return
+        super().wheelEvent(event)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and self.canPan():
