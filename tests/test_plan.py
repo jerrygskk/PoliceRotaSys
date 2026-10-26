@@ -305,7 +305,7 @@ class TestBuildSheetFor(_PlanTestCase):
         sheet = plan.build_sheet_for(self.conn, 2026, 10, UNIT)
         kinds = [b.columns[0].kind for b in sheet.blocks]
         self.assertEqual(kinds[0], "title")
-        self.assertEqual(kinds.count("date"), 4)
+        self.assertEqual(kinds.count("date") + kinds.count("weekday"), 4)
 
     def test_rotate_block_is_filled(self):
         self.make_plan()

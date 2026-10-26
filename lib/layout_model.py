@@ -255,13 +255,16 @@ def title_column(title: str, day_count: int) -> Column:
     )
 
 
-def _header_block(year: int, month: int, day_count: int) -> Block:
+def _header_block(
+    year: int, month: int, day_count: int, between: bool = False
+) -> Block:
+    """``between``：夾在兩個區塊中間的那幾組改成星期在左、日期在右
+    （維護者 2026-10-26）；最左、最右兩組維持日期在左。"""
+    date = date_column(year, month, day_count)
+    weekday = weekday_column(year, month, day_count)
     return Block(
         name="",
-        columns=(
-            date_column(year, month, day_count),
-            weekday_column(year, month, day_count),
-        ),
+        columns=(weekday, date) if between else (date, weekday),
     )
 
 
@@ -317,7 +320,9 @@ def build_sheet(
     ]
     for section in sections:
         if section.header_before:
-            blocks.append(_header_block(year, month, day_count))
+            blocks.append(
+                _header_block(year, month, day_count, between=len(blocks) > 1)
+            )
         is_blank = section.name in blank_sections
         kind = COL_BLANK if is_blank else COL_MEMBER
         columns = tuple(

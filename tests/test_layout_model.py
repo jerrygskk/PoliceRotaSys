@@ -113,6 +113,15 @@ class TestBuildSheet(unittest.TestCase):
         self.assertEqual(weekday.cells[2].color, RED)
         self.assertEqual(date.cells[4].color, BLACK)    # 10/5 週一
 
+    def test_middle_header_blocks_put_weekday_left(self):
+        """最左、最右兩組日期在左；夾在區塊中間的改成星期在左（維護者 2026-10-26）。"""
+        blocks = header_blocks(self.sheet)
+        self.assertGreater(len(blocks), 2)
+        for block in (blocks[0], blocks[-1]):
+            self.assertEqual([c.kind for c in block.columns], [COL_DATE, COL_WEEKDAY])
+        for block in blocks[1:-1]:
+            self.assertEqual([c.kind for c in block.columns], [COL_WEEKDAY, COL_DATE])
+
     def test_blank_section_columns_are_empty_but_still_sized(self):
         """⚠️ 固定番與幹部區刻意留白供手填，程式不要自作聰明去填。"""
         block = block_named(self.sheet, "固定番")
