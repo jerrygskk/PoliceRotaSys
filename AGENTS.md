@@ -2,21 +2,10 @@
 
 本檔是本專案唯一的規則檔，Claude、Codex 與其他工具共用。
 
-## 讀檔編碼
+## 通則在維護者的全域設定
 
-**讀取中文文字檔一律明確指定 UTF-8。**
-
-- PowerShell 執行前先將 `$OutputEncoding` 與 `[Console]::OutputEncoding` 設為 UTF-8，
-  不依賴系統預設編碼。
-- 若出現亂碼，立即改用 UTF-8 重新讀取；不得依據亂碼內容判斷。
-
-## 通用工作習慣在維護者的全域設定
-
-跨專案共通的規則（回覆風格、台灣用語、先計畫再寫 code、公版樣板、commit／push 鐵則等）
-放在維護者的 Claude 全域設定 **`C:\Users\user\.claude\CLAUDE.md`**，本檔不重複。
-
-- **Claude**：該檔每次對話自動載入，不必另外開檔。
-- **Codex／其他工具**：開始工作前**自行讀取該檔**（讀不到就照本檔做，不要臆測內容）。
+跨專案共通的規則（回覆風格、編碼、先計畫再寫 code、公版樣板、Qt 慣例、Git／commit／發版通則等）
+放在維護者的全域設定 **`C:\Users\user\.claude\CLAUDE.md`**（Claude 與 Codex 皆自動載入），本檔不重複。
 
 ⚠️ 這是本檔唯一允許指向庫外檔案的地方。**專案作業本身的規則一律留在本檔**。
 
@@ -96,34 +85,23 @@
 
 ### A. 跟他互動
 
-- **找得到就別問**：文件／code 裡有答案的不要問；但**沒寫進文件的設計決策**一定要問
 - ⚠️ **不要跑太快**：一次只推進一個決策，規則沒釘死之前不要開始設計下一層。
   他說過「你跑太快了」——那是真的在踩煞車，不是客套
 - ⚠️ **不要亂設計**：他給的原則就照做，不要自行「優化」成更聰明的版本
 
 ### B. 產出
 
-- ⚠️ **產品 runtime 相依是封閉清單：`PySide6` 與 `openpyxl`**。多一個套件就多一段
-  開機解壓與載入時間。要加東西**一律先問他**；`tools/` 與測試相依不受此限
+- ⚠️ **產品 runtime 相依是封閉清單：`PySide6` 與 `openpyxl`**（加套件先問，通則見全域設定）
   - PDF 走 Qt 的 `QPdfWriter`，**不引入 reportlab**（PySide6 已在包裡，PDF 是免費附贈的）
   - xlsx 走 `openpyxl`
 - ⚠️ **現場要調的東西一律做成設定**，不要在程式各處寫「如果是某某所就……」
-- 改完**先 `py_compile` 驗證語法**，測試照樣增刪改，但**只在 push 前才跑全套**
+- ⚠️ **本專案測試節奏比全域更寬**：改完 `py_compile`，測試照樣增刪改，但**只在 push 前才跑全套**
   （維護者裁示：階段完成、修完問題都不跑，回報時寫「測試已更新、尚未執行」）
-- 版面要量字寬或截圖給他看時，本機用 `QT_QPA_PLATFORM=windows`＋微軟正黑體 14pt；
-  ⚠️ `offscreen` 會換替代字型，量出來的字寬不準（DEVELOPER §5）
-- ⚠️ **視窗開啟時的初始焦點不得停在日期欄位**：焦點停在 `QDateEdit` 上時，
-  使用者的鍵盤或滾輪會直接改掉日期，畫面變化細微不易察覺，等於靜默竄改資料。
-  每個 Dialog `__init__` 末尾明確 `setFocus()` 到第一個該填的欄位
-- ⚠️ **公版樣板：有公版就直接套**，新檔案裡寫死色碼／自訂按鈕樣式＝往後改主題會漏
-- ⚠️ **彈窗一律不設 stylesheet**。PoliceDocSys 踩過：六個彈窗自帶區域 QSS，
-  把公版的停用反灰整個蓋掉，現場回報「欄位鎖住了卻看不出來」
+- 量字寬的做法見 DEVELOPER §5（字型 14pt）
 
 ### C. 版本 / Git / 發布
 
 - **push 前必跑 `python -m unittest tests.test_no_pii`**（防真實人名；public repo 尤其致命）
 - ⚠️ **beta 已發出，現場資料庫不能刪**：加欄位要登記 `db_schema._LATE_COLUMNS`；發版前拿舊庫開新版 exe 試一次（DEVELOPER §3、PITFALLS DB-1）
-- **勿手改 `lib/version.py`**：進版一律走 `tools/bump_version.py`；進位與否**他決定**
-- 打包**只用 onefile**；spec **已入庫**（`PoliceRotaSys.spec`，是原始碼不是產物），build 一律 `python -m PyInstaller --clean --noconfirm PoliceRotaSys.spec`，排除清單只改 `tools/pyi_prune.py`（DEVELOPER §10）
-- commit 訊息正文**手動斷行斷在約 40 個全形字**（≈ 終端機 80 欄）
-- 踩雷類改動把**症狀與根因**寫進 commit 正文，那是往後 `PITFALLS.md` 條目的素材
+- 進版工具：`tools/bump_version.py`（勿手改 `lib/version.py`）
+- spec **已入庫**（`PoliceRotaSys.spec`，是原始碼不是產物），build 一律 `python -m PyInstaller --clean --noconfirm PoliceRotaSys.spec`，排除清單只改 `tools/pyi_prune.py`（DEVELOPER §10）
